@@ -74,13 +74,13 @@ func flattenCompatibilityResponse() gin.HandlerFunc {
 		}
 
 		var envelope struct {
-			Code     int               `json:"code"`
+			Code     json.RawMessage   `json:"code"`
 			Message  string            `json:"message"`
 			Reason   string            `json:"reason"`
 			Metadata map[string]string `json:"metadata"`
 			Data     json.RawMessage   `json:"data"`
 		}
-		if err := json.Unmarshal(buffer.body.Bytes(), &envelope); err != nil || envelope.Code == 0 && envelope.Data == nil {
+		if err := json.Unmarshal(buffer.body.Bytes(), &envelope); err != nil || (len(envelope.Data) == 0 && envelope.Message == "") {
 			original.WriteHeader(status)
 			_, _ = original.Write(buffer.body.Bytes())
 			return
@@ -88,10 +88,15 @@ func flattenCompatibilityResponse() gin.HandlerFunc {
 
 		original.Header().Set("Content-Type", "application/json; charset=utf-8")
 		original.WriteHeader(status)
-		if envelope.Code >= http.StatusBadRequest {
+		if len(envelope.Data) == 0 {
 			payload := gin.H{"error": envelope.Message}
 			if envelope.Reason != "" {
 				payload["errorCode"] = envelope.Reason
+			} else if len(envelope.Code) > 0 {
+				var code string
+				if json.Unmarshal(envelope.Code, &code) == nil && code != "" {
+					payload["errorCode"] = code
+				}
 			}
 			if len(envelope.Metadata) > 0 {
 				payload["errorParams"] = envelope.Metadata

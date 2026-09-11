@@ -38,6 +38,7 @@ func TestNeonixCompatibilityRoutesAreAdminOnly(t *testing.T) {
 		resp := httptest.NewRecorder()
 		router.ServeHTTP(resp, req)
 		require.Equal(t, http.StatusForbidden, resp.Code, path)
+		require.Contains(t, resp.Body.String(), `"error"`, path)
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/api/providers/summary", nil)
