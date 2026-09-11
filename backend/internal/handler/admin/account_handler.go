@@ -11,6 +11,7 @@ import (
 	"log"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -924,6 +925,159 @@ func (h *AccountHandler) UpdateEnabled(c *gin.Context) {
 		"ok":      true,
 		"account": h.accountListResponseFromService(account),
 	})
+}
+
+type antigravityOAuthCompatRequest struct {
+	LoginID     string `json:"loginId" binding:"required"`
+	CallbackURL string `json:"callbackUrl" binding:"required"`
+}
+
+// StartAntigravityOAuthCompat adapts the existing Go OAuth session to the
+// Neonix callback-paste flow. Secrets stay inside the service and are never
+// included in the start response.
+func (h *AccountHandler) StartAntigravityOAuthCompat(c *gin.Context) {
+	if h == nil || h.antigravityOAuthService == nil {
+		response.InternalError(c, "Antigravity OAuth is not configured")
+		return
+	}
+	result, err := h.antigravityOAuthService.GenerateAuthURL(c.Request.Context(), nil)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{
+		"loginId":          result.SessionID,
+		"authorizationUrl": result.AuthURL,
+		"redirectUri":      antigravity.RedirectURI,
+		"expiresAt":        time.Now().Add(antigravity.SessionTTL).UnixMilli(),
+	})
+}
+
+func parseAntigravityCallbackURL(raw string) (code, state string, err error) {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || parsed.Scheme != "http" || parsed.Host != "localhost:8085" || parsed.Path != "/callback" {
+		return "", "", errors.New("invalid Antigravity callback URL")
+	}
+	if parsed.Fragment != "" {
+		return "", "", errors.New("invalid Antigravity callback URL fragment")
+	}
+	query := parsed.Query()
+	code = strings.TrimSpace(query.Get("code"))
+	state = strings.TrimSpace(query.Get("state"))
+	if code == "" || state == "" {
+		return "", "", errors.New("Antigravity callback is missing code or state")
+	}
+	return code, state, nil
+}
+
+// CompleteAntigravityOAuthCompat exchanges a pasted callback and upserts the
+// resulting credential by email. Existing account metadata and scheduling
+// state are preserved on reconnect; a refresh token is retained when Google
+// omits it on a subsequent consent response.
+func (h *AccountHandler) CompleteAntigravityOAuthCompat(c *gin.Context) {
+	if h == nil || h.antigravityOAuthService == nil || h.adminService == nil {
+		response.InternalError(c, "Antigravity OAuth is not configured")
+		return
+	}
+	var req antigravityOAuthCompatRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "invalid callback request")
+		return
+	}
+	code, state, err := parseAntigravityCallbackURL(req.CallbackURL)
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	tokenInfo, err := h.antigravityOAuthService.ExchangeCode(c.Request.Context(), &service.AntigravityExchangeCodeInput{
+		SessionID: strings.TrimSpace(req.LoginID),
+		State:     state,
+		Code:      code,
+	})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	credentials := h.antigravityOAuthService.BuildAccountCredentials(tokenInfo)
+	accounts, err := h.adminService.ListAccountsForSchedulerScoreFilter(c.Request.Context(), service.PlatformAntigravity, "", "", "", 0, "")
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	var existing *service.Account
+	if email := strings.TrimSpace(tokenInfo.Email); email != "" {
+		for index := range accounts {
+			if strings.EqualFold(strings.TrimSpace(accounts[index].GetCredential("email")), email) {
+				candidate := accounts[index]
+				existing = &candidate
+				break
+			}
+		}
+	}
+	if existing != nil {
+		if strings.TrimSpace(tokenInfo.RefreshToken) == "" {
+			if oldRefresh := existing.GetCredential("refresh_token"); oldRefresh != "" {
+				credentials["refresh_token"] = oldRefresh
+			}
+		}
+		updated, updateErr := h.adminService.UpdateAccount(c.Request.Context(), existing.ID, &service.UpdateAccountInput{
+			Type:        service.AccountTypeOAuth,
+			Credentials: credentials,
+		})
+		if updateErr != nil {
+			response.ErrorFrom(c, updateErr)
+			return
+		}
+		response.Success(c, gin.H{
+			"status":  "complete",
+			"created": false,
+			"account": h.buildAccountResponseWithRuntime(c.Request.Context(), updated),
+			"warning": antigravityOAuthWarning(tokenInfo),
+		})
+		return
+	}
+
+	name := strings.TrimSpace(tokenInfo.Email)
+	if name == "" {
+		name = "Antigravity account"
+	}
+	created, err := h.adminService.CreateAccount(c.Request.Context(), &service.CreateAccountInput{
+		Name:        name,
+		Platform:    service.PlatformAntigravity,
+		Type:        service.AccountTypeOAuth,
+		Credentials: credentials,
+		Extra:       map[string]any{"source_provider": "antigravity"},
+	})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	h.adminService.ForceAntigravityPrivacy(c.Request.Context(), created)
+	response.Success(c, gin.H{
+		"status":  "complete",
+		"created": true,
+		"account": h.buildAccountResponseWithRuntime(c.Request.Context(), created),
+		"warning": antigravityOAuthWarning(tokenInfo),
+	})
+}
+
+func antigravityOAuthWarning(tokenInfo *service.AntigravityTokenInfo) string {
+	if tokenInfo != nil && tokenInfo.ProjectIDMissing {
+		return "Antigravity login succeeded, but project metadata is not available yet"
+	}
+	return ""
+}
+
+func (h *AccountHandler) CancelAntigravityOAuthCompat(c *gin.Context) {
+	if h != nil && h.antigravityOAuthService != nil {
+		var req struct {
+			LoginID string `json:"loginId"`
+		}
+		if c.ShouldBindJSON(&req) == nil {
+			h.antigravityOAuthService.Cancel(req.LoginID)
+		}
+	}
+	response.Success(c, gin.H{"ok": true, "cancelled": true})
 }
 
 func buildAccountsListETag[T any](

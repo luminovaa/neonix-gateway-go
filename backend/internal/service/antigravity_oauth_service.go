@@ -479,6 +479,15 @@ func (s *AntigravityOAuthService) BuildAccountCredentials(tokenInfo *Antigravity
 	return creds
 }
 
+// Cancel removes a pending manual login session. It is intentionally
+// idempotent so closing a dialog or retrying cleanup cannot leak session state.
+func (s *AntigravityOAuthService) Cancel(sessionID string) {
+	if s == nil || s.sessionStore == nil {
+		return
+	}
+	s.sessionStore.Delete(strings.TrimSpace(sessionID))
+}
+
 // Stop 停止服务
 func (s *AntigravityOAuthService) Stop() {
 	s.sessionStore.Stop()
