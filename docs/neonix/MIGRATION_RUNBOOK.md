@@ -13,6 +13,24 @@ The Go backend is the production target. The Next.js Neonix application remains 
 
 The converter preserves provider credential bytes before encryption. Deprecated `bai`, `bb`, and `codebuff` records are reported as skipped and are not copied into the active Go store. No access, refresh, or API token is included in reports or command errors.
 
+## Current compatibility slice
+
+The migration branch exposes the operator-facing `/api` compatibility surface
+behind the admin guard. Account CRUD, provider registry/coverage, readiness,
+and Antigravity OAuth callback-paste login are available there; the middleware
+unwraps the Go response envelope so the existing Neonix transport can use the
+same direct JSON shape. The canonical Sub2API routes remain under `/api/v1`.
+
+Antigravity OAuth sessions use the existing Go PKCE service. The callback must
+be the exact `http://localhost:8085/callback` URL returned by `start`; the
+complete endpoint upserts by email and never returns credential values. A
+missing project identifier is persisted with a warning so the account can be
+checked again later.
+
+The compatibility surface is a staged cutover boundary. Codex, Grok, M365,
+remaining provider-specific account adapters, and the transactional database
+import still need their own reviewed slices before the Node backend is removed.
+
 ## Cutover gates
 
 - `go test ./...` passes on the exact commit deployed.
