@@ -60,4 +60,15 @@ func TestNeonixCompatibilityRoutesAreAdminOnly(t *testing.T) {
 		}
 	}
 	require.True(t, found)
+
+	req = httptest.NewRequest(http.MethodGet, "/api/accounts", nil)
+	req.Header.Set("Authorization", "Bearer admin")
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	require.Equal(t, http.StatusOK, resp.Code)
+	var accountsPayload struct {
+		Accounts []any `json:"accounts"`
+	}
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &accountsPayload))
+	require.Empty(t, accountsPayload.Accounts)
 }
