@@ -22,7 +22,7 @@ unwraps the Go response envelope so the existing Neonix transport can use the
 same direct JSON shape. The canonical Sub2API routes remain under `/api/v1`.
 
 Antigravity OAuth sessions use the existing Go PKCE service. The callback must
-be the exact `http://localhost:8085/callback` URL returned by `start`; the
+be the exact `http://localhost:8080/callback` URL returned by `start`; the
 complete endpoint upserts by email and never returns credential values. A
 missing project identifier is persisted with a warning so the account can be
 checked again later.

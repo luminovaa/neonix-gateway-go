@@ -9,22 +9,29 @@ import (
 )
 
 func TestParseAntigravityCallbackURLValidatesOriginAndFields(t *testing.T) {
-	code, state, err := parseAntigravityCallbackURL("http://localhost:8085/callback?code=abc%2B123&state=state-1")
+	code, state, err := parseAntigravityCallbackURL("http://localhost:8080/callback?code=abc%2B123&state=state-1")
 	require.NoError(t, err)
 	require.Equal(t, "abc+123", code)
 	require.Equal(t, "state-1", state)
 
 	for _, raw := range []string{
-		"https://localhost:8085/callback?code=abc&state=s",
-		"http://localhost:8080/callback?code=abc&state=s",
-		"http://127.0.0.1:8085/callback?code=abc&state=s",
-		"http://localhost:8085/callback?code=abc",
+		"https://localhost:8080/callback?code=abc&state=s",
+		"http://localhost:8081/callback?code=abc&state=s",
+		"http://127.0.0.1:8080/callback?code=abc&state=s",
+		"http://localhost:8080/callback?code=abc",
 		"javascript:alert(1)",
-		"http://localhost:8085/callback?code=abc&state=s#token",
+		"http://localhost:8080/callback?code=abc&state=s#token",
 	} {
 		_, _, err := parseAntigravityCallbackURL(raw)
 		require.Error(t, err, raw)
 	}
+}
+
+func TestParseAntigravityCallbackURLAcceptsNeonixLoginWrapper(t *testing.T) {
+	code, state, err := parseAntigravityCallbackURL("http://localhost:8080/login?next=/%3Fcode%3Dabc%26state%3Dwrapped")
+	require.NoError(t, err)
+	require.Equal(t, "abc", code)
+	require.Equal(t, "wrapped", state)
 }
 
 func TestAntigravityOAuthCancelRemovesSession(t *testing.T) {

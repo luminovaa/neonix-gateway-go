@@ -1011,13 +1011,29 @@ func (h *AccountHandler) StartAntigravityOAuthCompat(c *gin.Context) {
 
 func parseAntigravityCallbackURL(raw string) (code, state string, err error) {
 	parsed, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil || parsed.Scheme != "http" || parsed.Host != "localhost:8085" || parsed.Path != "/callback" {
+	if err != nil || parsed.Scheme != "http" || parsed.Host != "localhost:8080" || (parsed.Path != "/callback" && parsed.Path != "/login") {
 		return "", "", errors.New("invalid Antigravity callback URL")
 	}
 	if parsed.Fragment != "" {
 		return "", "", errors.New("invalid Antigravity callback URL fragment")
 	}
 	query := parsed.Query()
+	if parsed.Path == "/login" {
+		next := strings.TrimSpace(query.Get("next"))
+		if next == "" {
+			return "", "", errors.New("Antigravity callback is missing next")
+		}
+		if nested, parseErr := url.Parse(next); parseErr == nil {
+			query = nested.Query()
+			for _, key := range []string{"code", "state", "error"} {
+				if query.Get(key) == "" && parsed.Query().Get(key) != "" {
+					query.Set(key, parsed.Query().Get(key))
+				}
+			}
+		} else {
+			return "", "", errors.New("invalid Antigravity callback URL")
+		}
+	}
 	code = strings.TrimSpace(query.Get("code"))
 	state = strings.TrimSpace(query.Get("state"))
 	if code == "" || state == "" {
