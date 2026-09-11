@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/ctxkey"
+	"github.com/luminovaa/neonix-gateway-go/internal/service"
 
 	"github.com/gin-gonic/gin"
 )

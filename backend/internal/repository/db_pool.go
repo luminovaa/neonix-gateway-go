@@ -12,7 +12,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/luminovaa/neonix-gateway-go/internal/config"
 )
 
 const (

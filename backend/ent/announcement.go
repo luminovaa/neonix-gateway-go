@@ -10,8 +10,8 @@ import (
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
-	"github.com/Wei-Shaw/sub2api/ent/announcement"
-	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/luminovaa/neonix-gateway-go/ent/announcement"
+	"github.com/luminovaa/neonix-gateway-go/internal/domain"
 )
 
 // Announcement is the model entity for the Announcement schema.

@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/xai"
 	"github.com/stretchr/testify/require"
 )
 

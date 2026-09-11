@@ -3,8 +3,8 @@
 package repository
 
 import (
-	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/pagination"
+	"github.com/luminovaa/neonix-gateway-go/internal/service"
 )
 
 func (s *APIKeyRepoSuite) TestListByUserID_SortByNameAsc() {

@@ -5,8 +5,8 @@ package service
 import (
 	"testing"
 
-	"github.com/Wei-Shaw/sub2api/internal/domain"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
+	"github.com/luminovaa/neonix-gateway-go/internal/domain"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/xai"
 )
 
 func TestGrokAccountModelMappingCacheInvalidatesWithRuntimeSettings(t *testing.T) {

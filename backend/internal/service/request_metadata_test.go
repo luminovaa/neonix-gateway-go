@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/ctxkey"
 	"github.com/stretchr/testify/require"
 )
 

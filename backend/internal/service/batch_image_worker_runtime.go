@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/luminovaa/neonix-gateway-go/internal/config"
 )
 
 type BatchImageWorkerRuntime struct {

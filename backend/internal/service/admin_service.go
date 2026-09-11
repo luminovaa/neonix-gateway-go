@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"time"
 
-	dbent "github.com/Wei-Shaw/sub2api/ent"
-	"github.com/Wei-Shaw/sub2api/internal/config"
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	dbent "github.com/luminovaa/neonix-gateway-go/ent"
+	"github.com/luminovaa/neonix-gateway-go/internal/config"
+	infraerrors "github.com/luminovaa/neonix-gateway-go/internal/pkg/errors"
 )
 
 // AdminService interface defines admin management operations

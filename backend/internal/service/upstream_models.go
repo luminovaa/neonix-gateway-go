@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/antigravity"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/claude"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/geminicli"
 )
 
 const (

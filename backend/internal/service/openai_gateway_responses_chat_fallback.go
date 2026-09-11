@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
-	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/apicompat"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/logger"
+	"github.com/luminovaa/neonix-gateway-go/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/logger"
 	"go.uber.org/zap"
 )
 

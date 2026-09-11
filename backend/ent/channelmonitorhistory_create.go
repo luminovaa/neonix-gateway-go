@@ -11,9 +11,9 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
-	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
-	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
-	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/luminovaa/neonix-gateway-go/ent/channelmonitor"
+	"github.com/luminovaa/neonix-gateway-go/ent/channelmonitorhistory"
+	"github.com/luminovaa/neonix-gateway-go/internal/domain"
 )
 
 // ChannelMonitorHistoryCreate is the builder for creating a ChannelMonitorHistory entity.

@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	dbent "github.com/Wei-Shaw/sub2api/ent"
-	_ "github.com/Wei-Shaw/sub2api/ent/runtime"
+	dbent "github.com/luminovaa/neonix-gateway-go/ent"
+	_ "github.com/luminovaa/neonix-gateway-go/ent/runtime"
 	"github.com/stretchr/testify/require"
 
 	"entgo.io/ent/dialect"

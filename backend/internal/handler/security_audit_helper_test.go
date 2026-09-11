@@ -7,8 +7,8 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/Wei-Shaw/sub2api/internal/securityaudit"
-	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
+	"github.com/luminovaa/neonix-gateway-go/internal/securityaudit"
+	middleware2 "github.com/luminovaa/neonix-gateway-go/internal/server/middleware"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"

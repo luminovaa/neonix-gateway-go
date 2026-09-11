@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
-	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/ctxkey"
+	middleware2 "github.com/luminovaa/neonix-gateway-go/internal/server/middleware"
+	"github.com/luminovaa/neonix-gateway-go/internal/service"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )

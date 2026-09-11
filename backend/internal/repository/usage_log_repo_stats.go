@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/logger"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/timezone"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/usagestats"
+	"github.com/luminovaa/neonix-gateway-go/internal/service"
 	"github.com/lib/pq"
 )
 

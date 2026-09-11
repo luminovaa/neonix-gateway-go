@@ -8,9 +8,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Wei-Shaw/sub2api/internal/domain"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/luminovaa/neonix-gateway-go/internal/domain"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/claude"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/logger"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )

@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	dbent "github.com/Wei-Shaw/sub2api/ent"
-	"github.com/Wei-Shaw/sub2api/ent/enttest"
-	"github.com/Wei-Shaw/sub2api/internal/payment"
+	dbent "github.com/luminovaa/neonix-gateway-go/ent"
+	"github.com/luminovaa/neonix-gateway-go/ent/enttest"
+	"github.com/luminovaa/neonix-gateway-go/internal/payment"
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"

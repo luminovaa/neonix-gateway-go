@@ -9,9 +9,9 @@ import (
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
-	"github.com/Wei-Shaw/sub2api/ent/authidentity"
-	"github.com/Wei-Shaw/sub2api/ent/identityadoptiondecision"
-	"github.com/Wei-Shaw/sub2api/ent/pendingauthsession"
+	"github.com/luminovaa/neonix-gateway-go/ent/authidentity"
+	"github.com/luminovaa/neonix-gateway-go/ent/identityadoptiondecision"
+	"github.com/luminovaa/neonix-gateway-go/ent/pendingauthsession"
 )
 
 // IdentityAdoptionDecision is the model entity for the IdentityAdoptionDecision schema.

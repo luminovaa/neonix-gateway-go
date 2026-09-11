@@ -12,8 +12,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/antigravity"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/logger"
 	"github.com/gin-gonic/gin"
 )
 

@@ -7,9 +7,9 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/luminovaa/neonix-gateway-go/internal/config"
+	infraerrors "github.com/luminovaa/neonix-gateway-go/internal/pkg/errors"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/pagination"
 	"github.com/stretchr/testify/require"
 )
 

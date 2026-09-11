@@ -11,11 +11,11 @@ import (
 	"strings"
 	"time"
 
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
-	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
-	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	infraerrors "github.com/luminovaa/neonix-gateway-go/internal/pkg/errors"
+	pkghttputil "github.com/luminovaa/neonix-gateway-go/internal/pkg/httputil"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/logger"
+	middleware2 "github.com/luminovaa/neonix-gateway-go/internal/server/middleware"
+	"github.com/luminovaa/neonix-gateway-go/internal/service"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
