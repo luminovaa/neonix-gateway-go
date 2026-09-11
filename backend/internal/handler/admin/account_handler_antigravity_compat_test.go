@@ -3,6 +3,8 @@ package admin
 import (
 	"testing"
 
+	"context"
+	"github.com/luminovaa/neonix-gateway-go/internal/service"
 	"github.com/stretchr/testify/require"
 )
 
@@ -23,4 +25,17 @@ func TestParseAntigravityCallbackURLValidatesOriginAndFields(t *testing.T) {
 		_, _, err := parseAntigravityCallbackURL(raw)
 		require.Error(t, err, raw)
 	}
+}
+
+func TestAntigravityOAuthCancelRemovesSession(t *testing.T) {
+	oauth := service.NewAntigravityOAuthService(nil)
+	started, err := oauth.GenerateAuthURL(context.Background(), nil)
+	require.NoError(t, err)
+	oauth.Cancel(started.SessionID)
+	_, err = oauth.ExchangeCode(context.Background(), &service.AntigravityExchangeCodeInput{
+		SessionID: started.SessionID,
+		State:     started.State,
+		Code:      "unused",
+	})
+	require.Error(t, err)
 }
