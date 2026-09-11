@@ -1020,7 +1020,7 @@ func parseAntigravityCallbackURL(raw string) (code, state string, err error) {
 	query := parsed.Query()
 	if parsed.Path == "/login" {
 		next := strings.TrimSpace(query.Get("next"))
-		if next == "" {
+		if next == "" || !strings.HasPrefix(next, "/?") {
 			return "", "", errors.New("Antigravity callback is missing next")
 		}
 		if nested, parseErr := url.Parse(next); parseErr == nil {

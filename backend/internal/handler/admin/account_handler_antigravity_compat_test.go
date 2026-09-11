@@ -21,6 +21,7 @@ func TestParseAntigravityCallbackURLValidatesOriginAndFields(t *testing.T) {
 		"http://localhost:8080/callback?code=abc",
 		"javascript:alert(1)",
 		"http://localhost:8080/callback?code=abc&state=s#token",
+		"http://localhost:8080/login?next=https%3A%2F%2Fevil.example%2F%3Fcode%3Dabc%26state%3Ds",
 	} {
 		_, _, err := parseAntigravityCallbackURL(raw)
 		require.Error(t, err, raw)
