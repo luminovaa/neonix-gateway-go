@@ -1,0 +1,67 @@
+{
+  "version": "neonix-http-v1",
+  "routes": [
+    {
+      "name": "health",
+      "method": "GET",
+      "path": "/health",
+      "auth": "none",
+      "success": {"status": 200, "contentType": "application/json"}
+    },
+    {
+      "name": "readiness",
+      "method": "GET",
+      "path": "/ready",
+      "auth": "none",
+      "success": {"status": 200, "contentType": "application/json"},
+      "failure": {"status": 503, "errorCode": "SERVICE_NOT_READY"}
+    },
+    {
+      "name": "accounts-list",
+      "method": "GET",
+      "path": "/api/accounts",
+      "auth": "operator",
+      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+    },
+    {
+      "name": "models-list",
+      "method": "GET",
+      "path": "/v1/models",
+      "auth": "gateway",
+      "success": {"status": 200, "contentType": "application/json"}
+    },
+    {
+      "name": "openai-chat-stream",
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "auth": "gateway",
+      "success": {"status": 200, "contentType": "text/event-stream", "streaming": true, "cancellable": true}
+    },
+    {
+      "name": "openai-responses-stream",
+      "method": "POST",
+      "path": "/v1/responses",
+      "auth": "gateway",
+      "success": {"status": 200, "contentType": "text/event-stream", "streaming": true, "cancellable": true}
+    },
+    {
+      "name": "anthropic-messages-stream",
+      "method": "POST",
+      "path": "/v1/messages",
+      "auth": "gateway",
+      "success": {"status": 200, "contentType": "text/event-stream", "streaming": true, "cancellable": true}
+    },
+    {
+      "name": "gemini-native",
+      "method": "POST",
+      "path": "/v1beta/models/{model}:generateContent",
+      "auth": "gateway",
+      "success": {"status": 200, "contentType": "application/json"}
+    }
+  ],
+  "error": {
+    "contentType": "application/json",
+    "requiredFields": ["error", "errorCode"],
+    "secretFieldsForbidden": ["accessToken", "refreshToken", "idToken", "authorizationCode", "callbackUrl", "verifier"]
+  }
+}
