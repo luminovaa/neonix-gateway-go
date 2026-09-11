@@ -131,7 +131,7 @@ func RegisterNeonixCompatibilityRoutes(
 	api.Use(middleware.AdminComplianceGuard(settingService))
 
 	accounts := api.Group("/accounts")
-	accounts.GET("", h.Admin.Account.List)
+	accounts.GET("", h.Admin.Account.ListCompat)
 	accounts.GET("/ids", h.Admin.Account.IDsCompat)
 	accounts.POST("/antigravity/oauth/start", h.Admin.Account.StartAntigravityOAuthCompat)
 	accounts.POST("/antigravity/oauth/complete", h.Admin.Account.CompleteAntigravityOAuthCompat)

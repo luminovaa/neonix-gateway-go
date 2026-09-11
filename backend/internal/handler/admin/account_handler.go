@@ -869,6 +869,43 @@ func (h *AccountHandler) List(c *gin.Context) {
 	response.Paginated(c, result, total, page, pageSize)
 }
 
+// ListCompat keeps the legacy Neonix account-list shape while the richer
+// Sub2API list endpoint remains available under /api/v1. It deliberately uses
+// the shallow DTO and does not include credential values.
+func (h *AccountHandler) ListCompat(c *gin.Context) {
+	if h == nil || h.adminService == nil {
+		response.Success(c, gin.H{"accounts": []any{}, "groups": []any{}, "tags": []any{}, "pagination": gin.H{"page": 1, "pageSize": 20, "totalItems": 0, "totalPages": 1}})
+		return
+	}
+	page, pageSize := response.ParsePagination(c)
+	accounts, total, err := h.adminService.ListAccounts(
+		c.Request.Context(), page, pageSize,
+		c.Query("platform"), c.Query("type"), c.Query("status"), strings.TrimSpace(c.Query("search")), 0, "",
+		c.DefaultQuery("sort_by", "name"), c.DefaultQuery("sort_order", "asc"),
+	)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	items := make([]any, 0, len(accounts))
+	for index := range accounts {
+		items = append(items, h.accountListResponseFromService(&accounts[index]))
+	}
+	pages := int64(1)
+	if pageSize > 0 && total > 0 {
+		pages = (total + int64(pageSize) - 1) / int64(pageSize)
+	}
+	response.Success(c, gin.H{
+		"accounts": items,
+		"groups":   []any{},
+		"tags":     []any{},
+		"pagination": gin.H{
+			"page": page, "pageSize": pageSize, "totalItems": total, "totalPages": pages,
+		},
+		"stats": gin.H{"total": total},
+	})
+}
+
 // ProviderSummary exposes account coverage without returning credentials. It
 // is used by the Neonix operator UI while the Node account service is being
 // retired; source_provider is optional so legacy rows remain visible.
