@@ -28,6 +28,7 @@ import (
 	"github.com/luminovaa/neonix-gateway-go/internal/pkg/response"
 	"github.com/luminovaa/neonix-gateway-go/internal/pkg/timezone"
 	"github.com/luminovaa/neonix-gateway-go/internal/pkg/xai"
+	"github.com/luminovaa/neonix-gateway-go/internal/provider"
 	"github.com/luminovaa/neonix-gateway-go/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -865,6 +866,64 @@ func (h *AccountHandler) List(c *gin.Context) {
 	}
 
 	response.Paginated(c, result, total, page, pageSize)
+}
+
+// ProviderSummary exposes account coverage without returning credentials. It
+// is used by the Neonix operator UI while the Node account service is being
+// retired; source_provider is optional so legacy rows remain visible.
+func (h *AccountHandler) ProviderSummary(c *gin.Context) {
+	if h == nil || h.adminService == nil {
+		response.Success(c, gin.H{"providers": provider.BuildSummary(nil)})
+		return
+	}
+	accounts, err := h.adminService.ListAccountsForSchedulerScoreFilter(c.Request.Context(), "", "", "", "", 0, "")
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	snapshots := make([]provider.AccountSnapshot, 0, len(accounts))
+	for _, account := range accounts {
+		sourceProvider := ""
+		if account.Extra != nil {
+			if value, ok := account.Extra["source_provider"].(string); ok {
+				sourceProvider = value
+			}
+		}
+		snapshots = append(snapshots, provider.AccountSnapshot{
+			SourceProvider: sourceProvider,
+			Platform:       account.Platform,
+			Status:         account.Status,
+			Schedulable:    account.Schedulable,
+		})
+	}
+	response.Success(c, gin.H{"providers": provider.BuildSummary(snapshots)})
+}
+
+// UpdateEnabled is the compatibility adapter for Neonix's boolean enabled
+// field. Sub2API stores the same switch as schedulable, so translating it in
+// one place avoids exposing that storage detail to the UI.
+func (h *AccountHandler) UpdateEnabled(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "invalid account ID")
+		return
+	}
+	var req struct {
+		Enabled *bool `json:"enabled" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.Enabled == nil {
+		response.BadRequest(c, "enabled is required")
+		return
+	}
+	account, err := h.adminService.SetAccountSchedulable(c.Request.Context(), accountID, *req.Enabled)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{
+		"ok":      true,
+		"account": h.accountListResponseFromService(account),
+	})
 }
 
 func buildAccountsListETag[T any](

@@ -61,7 +61,7 @@ func TestProviderSummaryIsAdminOnlyAndUsesCanonicalCatalog(t *testing.T) {
 			require.NotEmpty(t, payload.Data.Providers)
 			foundAntigravity := false
 			for _, item := range payload.Data.Providers {
-				if item.ID == "antigravity" && item.Category == "provider" {
+				if item.ID == "antigravity" && item.Category == "routable" {
 					foundAntigravity = true
 				}
 			}

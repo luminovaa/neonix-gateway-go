@@ -13,6 +13,15 @@ func RegisterCommonRoutes(r *gin.Engine) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 
+	// Readiness is intentionally separate from liveness so deployers can use
+	// the same probe contract while the database/Redis wiring is migrated in
+	// later vertical slices. The server only registers routes after its
+	// dependencies have been constructed, so a reachable handler means the
+	// process completed startup.
+	r.GET("/ready", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"status": "ready"})
+	})
+
 	// Claude Code 遥测日志（忽略，直接返回200）
 	r.POST("/api/event_logging/batch", func(c *gin.Context) {
 		c.Status(http.StatusOK)

@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -44,5 +45,18 @@ func TestNeonixCompatibilityRoutesAreAdminOnly(t *testing.T) {
 	resp := httptest.NewRecorder()
 	router.ServeHTTP(resp, req)
 	require.Equal(t, http.StatusOK, resp.Code)
-	require.Contains(t, resp.Body.String(), "antigravity")
+	var payload struct {
+		Providers []struct {
+			ID string `json:"id"`
+		} `json:"providers"`
+	}
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &payload))
+	found := false
+	for _, item := range payload.Providers {
+		if item.ID == "antigravity" {
+			found = true
+			break
+		}
+	}
+	require.True(t, found)
 }

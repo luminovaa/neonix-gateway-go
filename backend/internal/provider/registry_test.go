@@ -29,3 +29,38 @@ func TestRegistryMarksDeprecatedProviders(t *testing.T) {
 		t.Fatal("All returned mutable global catalog")
 	}
 }
+
+func TestRegistryKeepsUnmigratedProviderPlatformsStable(t *testing.T) {
+	for _, id := range []string{"kiro", "qoder", "codebuddy", "codebuddy-china"} {
+		definition, ok := Lookup(id)
+		if !ok {
+			t.Fatalf("missing provider %s", id)
+		}
+		if definition.TargetPlatform != id {
+			t.Fatalf("provider %s must not be routed through an unrelated adapter: %+v", id, definition)
+		}
+	}
+}
+
+func TestBuildSummaryIncludesCoverageAndHistoricalProviders(t *testing.T) {
+	items := BuildSummary([]AccountSnapshot{
+		{SourceProvider: "antigravity", Platform: "antigravity", Status: "active", Schedulable: true},
+		{SourceProvider: "antigravity", Platform: "antigravity", Status: "error", Schedulable: false},
+		{Platform: "openai", Status: "active", Schedulable: true},
+		{Platform: "retired-provider", Status: "disabled", Schedulable: false},
+	})
+
+	byID := make(map[string]SummaryItem, len(items))
+	for _, item := range items {
+		byID[item.ID] = item
+	}
+	if got := byID["antigravity"]; got.TotalAccounts != 2 || got.ActiveAccounts != 1 || got.ErrorAccounts != 1 {
+		t.Fatalf("unexpected antigravity coverage: %+v", got)
+	}
+	if got := byID["openai"]; got.TotalAccounts != 1 || got.Category != CategoryLegacy {
+		t.Fatalf("unexpected legacy openai coverage: %+v", got)
+	}
+	if got := byID["retired-provider"]; got.TotalAccounts != 1 || got.BannedAccounts != 1 {
+		t.Fatalf("unexpected historical coverage: %+v", got)
+	}
+}
