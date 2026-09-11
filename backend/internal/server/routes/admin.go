@@ -4,6 +4,7 @@ package routes
 import (
 	"github.com/luminovaa/neonix-gateway-go/internal/handler"
 	"github.com/luminovaa/neonix-gateway-go/internal/pkg/response"
+	"github.com/luminovaa/neonix-gateway-go/internal/provider"
 	"github.com/luminovaa/neonix-gateway-go/internal/server/middleware"
 	"github.com/luminovaa/neonix-gateway-go/internal/service"
 
@@ -33,6 +34,11 @@ func RegisterAdminRoutes(
 	{
 		// 部署与运营合规确认
 		registerAdminComplianceRoutes(admin, h)
+
+		// Neonix provider metadata is a single source for the admin UI.
+		admin.GET("/providers/summary", func(c *gin.Context) {
+			response.Success(c, gin.H{"providers": provider.All()})
+		})
 
 		// 仪表盘
 		registerDashboardRoutes(admin, h)
