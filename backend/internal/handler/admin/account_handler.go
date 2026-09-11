@@ -900,6 +900,25 @@ func (h *AccountHandler) ProviderSummary(c *gin.Context) {
 	response.Success(c, gin.H{"providers": provider.BuildSummary(snapshots)})
 }
 
+// IDsCompat returns only stable account identifiers for cross-page selection;
+// it intentionally avoids loading or serializing credentials.
+func (h *AccountHandler) IDsCompat(c *gin.Context) {
+	if h == nil || h.adminService == nil {
+		response.Success(c, gin.H{"ids": []string{}, "total": 0})
+		return
+	}
+	accounts, err := h.adminService.ListAccountsForSchedulerScoreFilter(c.Request.Context(), "", "", "", "", 0, "")
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	ids := make([]string, 0, len(accounts))
+	for _, account := range accounts {
+		ids = append(ids, strconv.FormatInt(account.ID, 10))
+	}
+	response.Success(c, gin.H{"ids": ids, "total": len(ids)})
+}
+
 // UpdateEnabled is the compatibility adapter for Neonix's boolean enabled
 // field. Sub2API stores the same switch as schedulable, so translating it in
 // one place avoids exposing that storage detail to the UI.
