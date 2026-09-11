@@ -1,6 +1,7 @@
 package legacy
 
 import (
+	"bytes"
 	"encoding/json"
 	"testing"
 
@@ -29,6 +30,26 @@ func TestConvertPreservesCredentialBytesAndMetadata(t *testing.T) {
 	}
 	if string(plaintext) != string(raw) {
 		t.Fatalf("credential bytes changed: got %q want %q", plaintext, raw)
+	}
+}
+
+func TestNormalizedAccountDecryptCredentialsForRuntimeImport(t *testing.T) {
+	codec, err := credentials.New(bytes.Repeat([]byte{7}, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	normalized, report := Convert([]Account{{
+		ID: "a1", Provider: "antigravity", Credentials: json.RawMessage(`{"access_token":"secret","project_id":"p"}`),
+	}}, codec, Options{})
+	if report.Migrated != 1 {
+		t.Fatalf("unexpected report: %+v", report)
+	}
+	decoded, err := normalized[0].DecryptCredentials(codec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decoded["access_token"] != "secret" || decoded["project_id"] != "p" {
+		t.Fatalf("unexpected decoded credentials: %#v", decoded)
 	}
 }
 

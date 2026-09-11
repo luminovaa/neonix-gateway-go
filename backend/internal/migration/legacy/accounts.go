@@ -122,6 +122,24 @@ func (a Account) normalized(codec *credentials.Envelope) (NormalizedAccount, err
 	}, nil
 }
 
+// DecryptCredentials is the only hand-off from the migration artifact to the
+// runtime account repository. It validates the envelope and restores the
+// original provider JSON without reserializing it during conversion.
+func (a NormalizedAccount) DecryptCredentials(codec *credentials.Envelope) (map[string]any, error) {
+	if codec == nil {
+		return nil, errors.New("credential codec is required")
+	}
+	raw, err := codec.Open(a.Credential)
+	if err != nil {
+		return nil, fmt.Errorf("open credential envelope: %w", err)
+	}
+	var credentials map[string]any
+	if err := json.Unmarshal(raw, &credentials); err != nil || credentials == nil {
+		return nil, ErrInvalidCredentials
+	}
+	return credentials, nil
+}
+
 // Convert validates and encrypts accounts without logging or returning raw
 // credentials. Results are sorted by ID so dry-run reports are reproducible.
 func Convert(accounts []Account, codec *credentials.Envelope, opts Options) ([]NormalizedAccount, Report) {
