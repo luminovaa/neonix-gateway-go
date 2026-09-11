@@ -116,11 +116,14 @@ func RegisterNeonixCompatibilityRoutes(
 	panelRateLimiter *middleware.PanelRateLimiter,
 ) {
 	api := r.Group("/api")
+	// Install first so auth/compliance failures are flattened too; otherwise
+	// an early middleware abort would still leak the Go envelope to the
+	// direct-JSON Neonix transport.
+	api.Use(flattenCompatibilityResponse())
 	api.Use(gin.HandlerFunc(adminAuth))
 	api.Use(panelRateLimiter.Global())
 	api.Use(gin.HandlerFunc(auditLog))
 	api.Use(middleware.AdminComplianceGuard(settingService))
-	api.Use(flattenCompatibilityResponse())
 
 	accounts := api.Group("/accounts")
 	accounts.GET("", h.Admin.Account.List)
