@@ -1482,7 +1482,7 @@ func (h *AccountHandler) ListMailboxAccountsCompat(c *gin.Context) {
 	items := make([]gin.H, 0, len(all))
 	for _, account := range all {
 		credentials := account.Credentials
-		if mailboxRefreshTokenForAccount(credentials) == "" {
+		if !isMailboxConfigured(account.Platform, credentials) {
 			continue
 		}
 		email := strings.TrimSpace(account.GetCredential("email"))
@@ -1561,7 +1561,7 @@ func (h *AccountHandler) PollMailboxCompat(c *gin.Context) {
 	}
 	refreshToken := mailboxRefreshTokenForAccount(account.Credentials)
 	clientID := mailboxClientIDForAccount(account.Platform, account.Credentials)
-	if email == "" || refreshToken == "" || clientID == "" {
+	if email == "" || refreshToken == "" || clientID == "" || !isMailboxConfigured(account.Platform, account.Credentials) {
 		mailboxRespondError(c, "MAILBOX_CREDENTIAL_INVALID")
 		return
 	}
@@ -1617,6 +1617,21 @@ func mailboxClientIDForAccount(platform string, credentials map[string]any) stri
 		return m365.ClientID
 	}
 	return m365.MailboxClientID
+}
+
+func isMailboxConfigured(platform string, credentials map[string]any) bool {
+	if mailboxRefreshTokenForAccount(credentials) == "" {
+		return false
+	}
+	if platform == service.PlatformOutlook {
+		return true
+	}
+	// An M365 provider account may be reused only when it was explicitly
+	// authorized for IMAP; the normal Copilot scope is not sufficient for mail.
+	scopeValue, _ := credentials["scope"].(string)
+	mailboxEnabled, _ := credentials["mailbox"].(bool)
+	scope := strings.ToLower(strings.TrimSpace(scopeValue))
+	return strings.Contains(scope, "imap.accessasuser.all") || mailboxEnabled
 }
 
 func normalizeMailboxHTTPSURL(raw string) string {

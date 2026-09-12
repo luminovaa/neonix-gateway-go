@@ -72,3 +72,12 @@ func TestPollMailboxCompatValidatesProviderAndSingleFlight(t *testing.T) {
 	require.True(t, h.claimMailboxPoll(7))
 	h.releaseMailboxPoll(7)
 }
+
+func TestIsMailboxConfiguredDoesNotTreatCopilotScopeAsIMAP(t *testing.T) {
+	require.False(t, isMailboxConfigured(service.PlatformM365, map[string]any{
+		"refresh_token": "refresh", "scope": "openid profile https://substrate.office.com/sydney/M365Chat.Read",
+	}))
+	require.True(t, isMailboxConfigured(service.PlatformM365, map[string]any{
+		"refresh_token": "refresh", "scope": "openid offline_access https://outlook.office.com/IMAP.AccessAsUser.All",
+	}))
+}
