@@ -65,6 +65,7 @@ type AccountHandler struct {
 	rpmCache                service.RPMCache
 	tokenCacheInvalidator   service.TokenCacheInvalidator
 	grokImportProber        grokImportProber
+	grokDeviceOAuthService  *service.GrokOAuthService
 	upstreamBillingProbe    *service.UpstreamBillingProbeService
 	ollamaCloudUsage        *service.OllamaCloudUsageService
 	cfg                     *config.Config
@@ -96,7 +97,7 @@ func NewAccountHandler(
 	rpmCache service.RPMCache,
 	tokenCacheInvalidator service.TokenCacheInvalidator,
 ) *AccountHandler {
-	return &AccountHandler{
+	h := &AccountHandler{
 		adminService:            adminService,
 		oauthService:            oauthService,
 		openaiOAuthService:      openaiOAuthService,
@@ -112,6 +113,10 @@ func NewAccountHandler(
 		rpmCache:                rpmCache,
 		tokenCacheInvalidator:   tokenCacheInvalidator,
 	}
+	if concrete, ok := grokOAuthService.(*service.GrokOAuthService); ok {
+		h.grokDeviceOAuthService = concrete
+	}
+	return h
 }
 
 // CreateAccountRequest represents create account request
@@ -1149,6 +1154,126 @@ func (h *AccountHandler) CancelCodexOAuthCompat(c *gin.Context) {
 		var req codexDeviceOAuthCompatRequest
 		if c.ShouldBindJSON(&req) == nil {
 			h.openaiOAuthService.CancelCodexDevice(req.LoginID)
+		}
+	}
+	response.Success(c, gin.H{"ok": true, "cancelled": true})
+}
+
+type grokDeviceOAuthCompatRequest struct {
+	LoginID string `json:"loginId" binding:"required"`
+}
+
+// StartGrokOAuthCompat starts the xAI RFC 8628 device login. The xAI device
+// code stays server-side; only the verification URL and user code are sent to
+// the operator UI.
+func (h *AccountHandler) StartGrokOAuthCompat(c *gin.Context) {
+	if h == nil || h.grokDeviceOAuthService == nil {
+		response.InternalError(c, "Grok OAuth is not configured")
+		return
+	}
+	result, err := h.grokDeviceOAuthService.StartGrokDevice(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
+// PollGrokOAuthCompat performs one device poll, upserts by xAI subject/email,
+// and consumes the session only after persistence succeeds.
+func (h *AccountHandler) PollGrokOAuthCompat(c *gin.Context) {
+	if h == nil || h.grokDeviceOAuthService == nil || h.adminService == nil {
+		response.InternalError(c, "Grok OAuth is not configured")
+		return
+	}
+	var req grokDeviceOAuthCompatRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "invalid Grok OAuth request")
+		return
+	}
+	result, err := h.grokDeviceOAuthService.PollGrokDevice(c.Request.Context(), strings.TrimSpace(req.LoginID))
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if result.Pending {
+		response.Success(c, gin.H{"status": "pending", "retryAfter": result.RetryAfter, "expiresAt": result.ExpiresAt})
+		return
+	}
+	if result.TokenInfo == nil {
+		response.InternalError(c, "Grok OAuth did not return token information")
+		return
+	}
+	tokenInfo := result.TokenInfo
+	credentials := h.grokDeviceOAuthService.BuildAccountCredentials(tokenInfo)
+	accounts, err := h.adminService.ListAccountsForSchedulerScoreFilter(c.Request.Context(), service.PlatformGrok, "", "", "", 0, "")
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	var existing *service.Account
+	for index := range accounts {
+		candidate := &accounts[index]
+		if subject := strings.TrimSpace(tokenInfo.Subject); subject != "" {
+			for _, key := range []string{"sub", "user_id", "subject"} {
+				if strings.EqualFold(subject, strings.TrimSpace(candidate.GetCredential(key))) {
+					existing = candidate
+					break
+				}
+			}
+		}
+		if existing == nil && strings.TrimSpace(tokenInfo.Email) != "" && strings.EqualFold(strings.TrimSpace(tokenInfo.Email), strings.TrimSpace(candidate.GetCredential("email"))) {
+			existing = candidate
+		}
+		if existing != nil {
+			break
+		}
+	}
+	if existing != nil && credentialMapString(credentials, "refresh_token") == "" {
+		if oldRefresh := strings.TrimSpace(existing.GetCredential("refresh_token")); oldRefresh != "" {
+			credentials["refresh_token"] = oldRefresh
+		}
+	}
+	if credentialMapString(credentials, "refresh_token") == "" {
+		response.BadRequest(c, "Grok OAuth did not return a refresh token")
+		return
+	}
+	var account *service.Account
+	created := false
+	if existing != nil {
+		account, err = h.adminService.UpdateAccount(c.Request.Context(), existing.ID, &service.UpdateAccountInput{Type: service.AccountTypeOAuth, Credentials: credentials})
+	} else {
+		name := strings.TrimSpace(tokenInfo.Email)
+		if name == "" {
+			name = strings.TrimSpace(tokenInfo.Subject)
+		}
+		if name == "" {
+			name = "Grok account"
+		}
+		account, err = h.adminService.CreateAccount(c.Request.Context(), &service.CreateAccountInput{
+			Name: name, Platform: service.PlatformGrok, Type: service.AccountTypeOAuth,
+			Credentials: credentials, Extra: map[string]any{"source_provider": "grok"},
+		})
+		created = true
+	}
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	h.grokDeviceOAuthService.ConsumeGrokDevice(req.LoginID)
+	response.Success(c, gin.H{"status": "complete", "created": created, "account": h.buildAccountResponseWithRuntime(c.Request.Context(), account)})
+}
+
+func credentialMapString(values map[string]any, key string) string {
+	value, _ := values[key].(string)
+	return strings.TrimSpace(value)
+}
+
+func (h *AccountHandler) CancelGrokOAuthCompat(c *gin.Context) {
+	if h != nil && h.grokDeviceOAuthService != nil {
+		var req grokDeviceOAuthCompatRequest
+		if c.ShouldBindJSON(&req) == nil {
+			h.grokDeviceOAuthService.CancelGrokDevice(req.LoginID)
 		}
 	}
 	response.Success(c, gin.H{"ok": true, "cancelled": true})

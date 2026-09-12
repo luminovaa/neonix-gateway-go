@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/luminovaa/neonix-gateway-go/internal/config"
@@ -16,17 +17,22 @@ import (
 const grokDefaultAccessTokenTTL = 6 * time.Hour
 
 type GrokOAuthService struct {
-	sessionStore *xai.SessionStore
-	proxyRepo    ProxyRepository
-	oauthClient  GrokOAuthClient
-	config       *config.Config
+	sessionStore   *xai.SessionStore
+	proxyRepo      ProxyRepository
+	oauthClient    GrokOAuthClient
+	config         *config.Config
+	deviceMu       sync.Mutex
+	deviceSessions map[string]*grokDeviceSession
+	deviceClient   *http.Client
 }
 
 func NewGrokOAuthService(proxyRepo ProxyRepository, oauthClient GrokOAuthClient, configs ...*config.Config) *GrokOAuthService {
 	service := &GrokOAuthService{
-		sessionStore: xai.NewSessionStore(),
-		proxyRepo:    proxyRepo,
-		oauthClient:  oauthClient,
+		sessionStore:   xai.NewSessionStore(),
+		proxyRepo:      proxyRepo,
+		oauthClient:    oauthClient,
+		deviceSessions: make(map[string]*grokDeviceSession),
+		deviceClient:   &http.Client{Timeout: 20 * time.Second},
 	}
 	if len(configs) > 0 {
 		service.config = configs[0]
@@ -386,6 +392,9 @@ func (s *GrokOAuthService) BuildAccountCredentials(tokenInfo *GrokTokenInfo) map
 
 func (s *GrokOAuthService) Stop() {
 	s.sessionStore.Stop()
+	s.deviceMu.Lock()
+	s.deviceSessions = make(map[string]*grokDeviceSession)
+	s.deviceMu.Unlock()
 }
 
 func (s *GrokOAuthService) tokenInfoFromResponse(tokenResp *xai.TokenResponse, clientID string, existing map[string]any) *GrokTokenInfo {

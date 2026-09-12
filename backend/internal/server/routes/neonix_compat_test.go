@@ -44,6 +44,9 @@ func TestNeonixCompatibilityRoutesAreAdminOnly(t *testing.T) {
 		"/api/accounts/codex/oauth/start",
 		"/api/accounts/codex/oauth/poll",
 		"/api/accounts/codex/oauth/cancel",
+		"/api/accounts/grok/oauth/start",
+		"/api/accounts/grok/oauth/poll",
+		"/api/accounts/grok/oauth/cancel",
 	} {
 		req := httptest.NewRequest(http.MethodPost, path, nil)
 		resp := httptest.NewRecorder()
