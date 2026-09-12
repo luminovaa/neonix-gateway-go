@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -142,4 +143,30 @@ func TestNeonixProviderDetailUsesCanonicalRegistry(t *testing.T) {
 	resp = httptest.NewRecorder()
 	router.ServeHTTP(resp, req)
 	require.Equal(t, http.StatusNotFound, resp.Code)
+}
+
+func TestNeonixAuthCompatibilitySeparatesPublicLoginFromOperatorSession(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	adminAuth := servermiddleware.AdminAuthMiddleware(func(c *gin.Context) {
+		servermiddleware.AbortWithError(c, http.StatusUnauthorized, "UNAUTHORIZED", "Authorization required")
+	})
+	passthroughAudit := servermiddleware.AuditLogMiddleware(func(c *gin.Context) { c.Next() })
+	RegisterNeonixCompatibilityRoutes(
+		router,
+		&handler.Handlers{Admin: &handler.AdminHandlers{Account: &adminhandler.AccountHandler{}}},
+		adminAuth, passthroughAudit, nil, nil,
+	)
+
+	login := httptest.NewRecorder()
+	loginReq := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(`{"username":"operator","password":"password"}`))
+	loginReq.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(login, loginReq)
+	// Login reaches the public compatibility handler (which has no services in
+	// this wiring-only test) rather than being rejected by adminAuth.
+	require.Equal(t, http.StatusInternalServerError, login.Code)
+
+	me := httptest.NewRecorder()
+	router.ServeHTTP(me, httptest.NewRequest(http.MethodGet, "/api/auth/me", nil))
+	require.Equal(t, http.StatusUnauthorized, me.Code)
 }
