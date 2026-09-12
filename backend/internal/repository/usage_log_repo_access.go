@@ -22,9 +22,14 @@ func (r *usageLogRepository) GetAPIKeyAccessStatsSince(ctx context.Context, apiK
 		SELECT COUNT(*),
 		       COUNT(DISTINCT NULLIF(ip_address, '')),
 		       COUNT(DISTINCT NULLIF(user_agent, '')),
-		       MAX(created_at)
-		FROM usage_logs
-		WHERE api_key_id = $1 AND created_at >= $2`, apiKeyID, since)
+		       MAX(accessed_at)
+		FROM (
+		  SELECT ip_address, user_agent, created_at AS accessed_at
+		  FROM usage_logs WHERE api_key_id = $1 AND created_at >= $2
+		  UNION ALL
+		  SELECT ip_address, user_agent, accessed_at
+		  FROM neonix_legacy_api_key_access_logs WHERE api_key_id = $1 AND accessed_at >= $2
+		) access_rows`, apiKeyID, since)
 	if err != nil {
 		return nil, err
 	}
@@ -56,9 +61,13 @@ func (r *usageLogRepository) GetAPIKeyRequestStats(ctx context.Context, apiKeyID
 		endTime = time.Now().UTC().Add(time.Nanosecond)
 	}
 	rows, err := r.sql.QueryContext(ctx, `
-		SELECT COUNT(*), COUNT(*) FILTER (WHERE actual_cost > 0)
-		FROM usage_logs
-		WHERE api_key_id = $1 AND created_at >= $2 AND created_at < $3`, apiKeyID, startTime, endTime)
+		SELECT SUM(total_requests), SUM(success_requests) FROM (
+		  SELECT COUNT(*) AS total_requests, COUNT(*) FILTER (WHERE actual_cost > 0) AS success_requests
+		  FROM usage_logs WHERE api_key_id = $1 AND created_at >= $2 AND created_at < $3
+		  UNION ALL
+		  SELECT COUNT(*), COUNT(*) FILTER (WHERE success)
+		  FROM neonix_legacy_api_key_usage WHERE api_key_id = $1 AND occurred_at >= $2 AND occurred_at < $3
+		) request_rows`, apiKeyID, startTime, endTime)
 	if err != nil {
 		return nil, err
 	}

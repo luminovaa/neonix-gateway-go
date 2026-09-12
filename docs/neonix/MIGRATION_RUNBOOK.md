@@ -17,8 +17,11 @@ uses numeric IDs while Neonix's table uses text IDs. Apply migration
 table under the single operator, and record its original ID in
 `neonix_legacy_api_key_ids`. The compatibility routes accept either the native
 numeric ID or that mapped legacy ID, so existing client configurations and
-usage links keep working after cutover. Keep the legacy `api_key_usage` and
-access-log snapshot read-only until a dedicated history importer is verified.
+usage links keep working after cutover. Export `api_key_usage` and
+`api_key_access_logs` in the same envelope; the importer stores them in the
+append-only compatibility history tables and the Go usage endpoints merge
+those rows with native Go history. Keep the original snapshot read-only until
+the imported counts and latest access timestamps have been verified.
 
 The converter preserves provider credential bytes before encryption. Deprecated `bai`, `bb`, and `codebuff` records are reported as skipped and are not copied into the active Go store. No access, refresh, or API token is included in reports or command errors.
 

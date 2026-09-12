@@ -75,6 +75,48 @@ func TestImportAPIKeysIntoPostgresMapsToSingleOperatorWithoutReportingSecrets(t 
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestImportAPIKeyHistoryUsesMappedKeysAndIsIdempotent(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+	mock.ExpectBegin()
+	mock.ExpectExec("INSERT INTO neonix_legacy_api_key_usage").
+		WithArgs(int64(11), sqlmock.AnyArg(), "model-a", int64(12), int64(7), 0.25, true, "legacy-key").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("INSERT INTO neonix_legacy_api_key_access_logs").
+		WithArgs(int64(22), "203.0.113.1", "client", sqlmock.AnyArg(), "legacy-key").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	report, err := ImportAPIKeyHistoryIntoPostgres(context.Background(), db, []APIKeyUsage{{
+		ID: 11, APIKeyID: "legacy-key", Timestamp: 1710000000000, Model: "model-a",
+		InputTokens: 12, OutputTokens: 7, Credits: 0.25, Success: true,
+	}}, []APIKeyAccessLog{{
+		ID: 22, APIKeyID: "legacy-key", IPAddress: "203.0.113.1", UserAgent: "client", AccessedAt: 1710000001000,
+	}})
+	require.NoError(t, err)
+	require.Equal(t, APIKeyHistoryReport{UsageTotal: 1, UsageApplied: 1, AccessTotal: 1, AccessApplied: 1}, report)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestImportAPIKeyHistoryRollsBackWhenLegacyKeyIsUnmapped(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+	mock.ExpectBegin()
+	mock.ExpectExec("INSERT INTO neonix_legacy_api_key_usage").
+		WithArgs(int64(11), sqlmock.AnyArg(), "model-a", int64(0), int64(0), 0.0, false, "missing").
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectRollback()
+
+	_, err = ImportAPIKeyHistoryIntoPostgres(context.Background(), db, []APIKeyUsage{{
+		ID: 11, APIKeyID: "missing", Timestamp: 1710000000000, Model: "model-a",
+	}}, nil)
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrImportDB)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestImportSettingsIntoPostgresUsesOneTransaction(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)

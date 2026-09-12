@@ -26,12 +26,16 @@ import (
 )
 
 type sourceEnvelope struct {
-	Accounts []legacy.Account           `json:"accounts"`
-	APIKeys  []legacy.APIKey            `json:"apiKeys"`
-	Settings map[string]json.RawMessage `json:"settings"`
+	Accounts         []legacy.Account           `json:"accounts"`
+	APIKeys          []legacy.APIKey            `json:"apiKeys"`
+	APIKeyUsage      []legacy.APIKeyUsage       `json:"apiKeyUsage"`
+	APIKeyAccessLogs []legacy.APIKeyAccessLog   `json:"apiKeyAccessLogs"`
+	Settings         map[string]json.RawMessage `json:"settings"`
 	// api_keys is accepted for exports produced by SQL tooling that preserves
 	// the database column naming convention.
-	LegacyAPIKeys []legacy.APIKey `json:"api_keys"`
+	LegacyAPIKeys          []legacy.APIKey          `json:"api_keys"`
+	LegacyAPIKeyUsage      []legacy.APIKeyUsage     `json:"api_key_usage"`
+	LegacyAPIKeyAccessLogs []legacy.APIKeyAccessLog `json:"api_key_access_logs"`
 }
 
 func main() {
@@ -54,7 +58,7 @@ func main() {
 	if err != nil {
 		fatal("credential codec unavailable: %v", err)
 	}
-	accounts, apiKeys, settings, err := readMigrationSource(*sourcePath)
+	accounts, apiKeys, apiKeyUsage, apiKeyAccessLogs, settings, err := readMigrationSource(*sourcePath)
 	if err != nil {
 		fatal("read migration source: %v", err)
 	}
@@ -149,6 +153,14 @@ func main() {
 		keyData, _ := json.Marshal(keyImportReport)
 		fmt.Printf("api_key_database_import=%s\n", keyData)
 	}
+	if len(apiKeyUsage) > 0 || len(apiKeyAccessLogs) > 0 {
+		historyReport, err := legacy.ImportAPIKeyHistoryIntoPostgres(importCtx, db, apiKeyUsage, apiKeyAccessLogs)
+		if err != nil {
+			fatal("import API-key history: %v", err)
+		}
+		historyData, _ := json.Marshal(historyReport)
+		fmt.Printf("api_key_history_database_import=%s\n", historyData)
+	}
 	if len(normalizedSettings) > 0 {
 		settingsImportReport, err := legacy.ImportSettingsIntoPostgres(importCtx, db, normalizedSettings, time.Now)
 		if err != nil {
@@ -159,28 +171,34 @@ func main() {
 	}
 }
 
-func readMigrationSource(path string) ([]legacy.Account, []legacy.APIKey, map[string]json.RawMessage, error) {
+func readMigrationSource(path string) ([]legacy.Account, []legacy.APIKey, []legacy.APIKeyUsage, []legacy.APIKeyAccessLog, map[string]json.RawMessage, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, nil, err
 	}
 	defer f.Close()
 	data, err := io.ReadAll(f)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, nil, err
 	}
 	var accounts []legacy.Account
 	if err := json.Unmarshal(data, &accounts); err == nil {
-		return accounts, nil, nil, nil
+		return accounts, nil, nil, nil, nil, nil
 	}
 	var envelope sourceEnvelope
 	if err := json.Unmarshal(data, &envelope); err != nil {
-		return nil, nil, nil, errors.New("source must be a JSON account array or object with accounts")
+		return nil, nil, nil, nil, nil, errors.New("source must be a JSON account array or object with accounts")
 	}
 	if len(envelope.APIKeys) == 0 {
 		envelope.APIKeys = envelope.LegacyAPIKeys
 	}
-	return envelope.Accounts, envelope.APIKeys, envelope.Settings, nil
+	if len(envelope.APIKeyUsage) == 0 {
+		envelope.APIKeyUsage = envelope.LegacyAPIKeyUsage
+	}
+	if len(envelope.APIKeyAccessLogs) == 0 {
+		envelope.APIKeyAccessLogs = envelope.LegacyAPIKeyAccessLogs
+	}
+	return envelope.Accounts, envelope.APIKeys, envelope.APIKeyUsage, envelope.APIKeyAccessLogs, envelope.Settings, nil
 }
 
 func writeReport(report any) {
