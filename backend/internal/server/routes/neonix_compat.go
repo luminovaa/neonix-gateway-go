@@ -126,6 +126,7 @@ func RegisterNeonixCompatibilityRoutes(
 	if len(configs) > 0 && configs[0] != nil {
 		serverConfig = configs[0]
 	}
+	proxyConfigRuntime := newNeonixProxyConfigRuntime(settingService, serverConfig)
 	api := r.Group("/api")
 	// Install first so auth/compliance failures are flattened too; otherwise
 	// an early middleware abort would still leak the Go envelope to the
@@ -226,9 +227,9 @@ func RegisterNeonixCompatibilityRoutes(
 	})
 	api.GET("/proxy/resilience", h.Admin.Account.ResilienceCompat)
 	api.POST("/proxy/resilience/model-locks/clear", h.Admin.Account.ClearModelLocksCompat)
-	api.GET("/proxy/status", func(c *gin.Context) {
-		response.Success(c, gin.H{"running": true, "host": serverConfig.Server.Host, "port": serverConfig.Server.Port, "stats": gin.H{}})
-	})
+	api.GET("/proxy/config", proxyConfigRuntime.get)
+	api.PUT("/proxy/config", proxyConfigRuntime.update)
+	api.GET("/proxy/status", proxyConfigRuntime.status)
 	api.POST("/proxy/start", func(c *gin.Context) {
 		response.Success(c, gin.H{"ok": true, "running": true})
 	})

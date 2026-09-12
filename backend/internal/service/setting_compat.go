@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -41,7 +42,7 @@ func (s *SettingService) GetNeonixSetting(ctx context.Context, key string) (any,
 	}
 	raw, err := s.settingRepo.GetValue(ctx, key)
 	if err != nil {
-		if err == ErrSettingNotFound {
+		if errors.Is(err, ErrSettingNotFound) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("get Neonix setting: %w", err)

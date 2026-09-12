@@ -37,6 +37,13 @@ objects survive a Node/Go rolling cutover. The list endpoint only exposes the
 small Neonix preference allowlist and initializes the response-footer defaults
 idempotently; the typed admin settings surface remains under `/api/v1`.
 
+`/api/proxy/config` now stores the UI-safe proxy options in the same settings
+table and returns Go gateway host/port defaults. Credential-shaped fields are
+discarded at the compatibility boundary; API keys continue to use
+`/api/api-keys`. The status alias reports the Go process as the active gateway,
+while live proxy lifecycle, request logs, and model-catalog synchronization
+remain cutover gates until their Go services own the underlying state.
+
 Antigravity OAuth sessions use the existing Go PKCE service. The callback must
 be the exact `http://localhost:8080/callback` URL returned by `start`; the
 complete endpoint upserts by email and never returns credential values. A

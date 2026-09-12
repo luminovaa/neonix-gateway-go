@@ -234,6 +234,20 @@
       "success": {"status": 200, "contentType": "application/json", "sanitized": true}
     },
     {
+      "name": "proxy-config-get",
+      "method": "GET",
+      "path": "/api/proxy/config",
+      "auth": "operator",
+      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+    },
+    {
+      "name": "proxy-config-update",
+      "method": "PUT",
+      "path": "/api/proxy/config",
+      "auth": "operator",
+      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+    },
+    {
       "name": "proxy-start",
       "method": "POST",
       "path": "/api/proxy/start",
