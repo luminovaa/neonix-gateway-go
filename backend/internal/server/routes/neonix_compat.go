@@ -145,6 +145,8 @@ func RegisterNeonixCompatibilityRoutes(
 	accounts.POST("/antigravity/oauth/start", h.Admin.Account.StartAntigravityOAuthCompat)
 	accounts.POST("/antigravity/oauth/complete", h.Admin.Account.CompleteAntigravityOAuthCompat)
 	accounts.POST("/antigravity/oauth/cancel", h.Admin.Account.CancelAntigravityOAuthCompat)
+	accounts.POST("/:id/check", h.Admin.Account.CheckCompat)
+	accounts.POST("/:id/warmup", h.Admin.Account.WarmupCompat)
 	accounts.GET("/:id", h.Admin.Account.GetByID)
 	accounts.POST("", h.Admin.Account.Create)
 	accounts.POST("/batch", h.Admin.Account.BatchCreate)

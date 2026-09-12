@@ -1003,6 +1003,46 @@ type antigravityOAuthCompatRequest struct {
 	CallbackURL string `json:"callbackUrl" binding:"required"`
 }
 
+// CheckCompat performs a forced usage/credential check for the legacy Accounts
+// action. The response stays a direct JSON object after compatibility
+// flattening and never includes raw credentials.
+func (h *AccountHandler) CheckCompat(c *gin.Context) {
+	h.checkOrWarmupCompat(c, true)
+}
+
+// WarmupCompat shares the same bounded provider probe used by the check action.
+// Keeping this as a separate endpoint preserves the UI contract while the Go
+// provider adapters converge on one warmup implementation.
+func (h *AccountHandler) WarmupCompat(c *gin.Context) {
+	h.checkOrWarmupCompat(c, true)
+}
+
+func (h *AccountHandler) checkOrWarmupCompat(c *gin.Context, force bool) {
+	if h == nil || h.adminService == nil {
+		response.InternalError(c, "Account service is not configured")
+		return
+	}
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || accountID <= 0 {
+		response.BadRequest(c, "invalid account ID")
+		return
+	}
+	account, err := h.adminService.GetAccount(c.Request.Context(), accountID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	var usage *service.UsageInfo
+	if h.accountUsageService != nil {
+		usage, err = h.accountUsageService.GetUsage(c.Request.Context(), accountID, force)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+	}
+	response.Success(c, gin.H{"ok": true, "usage": usage, "account": h.accountResponseFromService(account)})
+}
+
 type codexDeviceOAuthCompatRequest struct {
 	LoginID string `json:"loginId" binding:"required"`
 }

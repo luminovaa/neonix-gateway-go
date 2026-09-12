@@ -122,6 +122,20 @@
       "success": {"status": 200, "contentType": "application/json", "sanitized": true}
     },
     {
+      "name": "account-check",
+      "method": "POST",
+      "path": "/api/accounts/{id}/check",
+      "auth": "operator",
+      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+    },
+    {
+      "name": "account-warmup",
+      "method": "POST",
+      "path": "/api/accounts/{id}/warmup",
+      "auth": "operator",
+      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+    },
+    {
       "name": "models-list",
       "method": "GET",
       "path": "/v1/models",

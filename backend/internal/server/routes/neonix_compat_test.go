@@ -55,6 +55,8 @@ func TestNeonixCompatibilityRoutesAreAdminOnly(t *testing.T) {
 		"/api/mailbox/oauth/start",
 		"/api/mailbox/oauth/complete",
 		"/api/mailbox/oauth/cancel",
+		"/api/accounts/1/check",
+		"/api/accounts/1/warmup",
 	} {
 		method := http.MethodPost
 		if path == "/api/mailbox/accounts" {
