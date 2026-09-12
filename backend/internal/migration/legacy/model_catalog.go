@@ -15,7 +15,6 @@ type ModelCatalogRow struct {
 	ModelID        string          `json:"modelId"`
 	ModelName      string          `json:"modelName"`
 	Description    string          `json:"description"`
-	RequiresPro    bool            `json:"requiresPro"`
 	RawData        json.RawMessage `json:"rawData"`
 	UpdatedAt      int64           `json:"updatedAt"`
 	Provider       string          `json:"provider"`
@@ -96,7 +95,7 @@ func ImportModelCatalogIntoPostgres(ctx context.Context, db *sql.DB, models []Mo
 		if model.DeletedAt != nil {
 			deletedAt = unixMillis(*model.DeletedAt)
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO neonix_model_catalog (model_id, model_name, description, provider, source, requires_pro, status, raw_data, updated_by_admin, is_deleted, created_at, updated_at, deleted_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT (model_id) DO UPDATE SET model_name=EXCLUDED.model_name, description=EXCLUDED.description, provider=EXCLUDED.provider, source=EXCLUDED.source, requires_pro=EXCLUDED.requires_pro, status=EXCLUDED.status, raw_data=EXCLUDED.raw_data, updated_by_admin=EXCLUDED.updated_by_admin, is_deleted=EXCLUDED.is_deleted, updated_at=EXCLUDED.updated_at, deleted_at=EXCLUDED.deleted_at`, id, name, model.Description, provider, source, model.RequiresPro, status, []byte(raw), model.UpdatedByAdmin, model.IsDeleted, createdAt, updatedAt, deletedAt); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO neonix_model_catalog (model_id, model_name, description, provider, source, status, raw_data, updated_by_admin, is_deleted, created_at, updated_at, deleted_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT (model_id) DO UPDATE SET model_name=EXCLUDED.model_name, description=EXCLUDED.description, provider=EXCLUDED.provider, source=EXCLUDED.source, status=EXCLUDED.status, raw_data=EXCLUDED.raw_data, updated_by_admin=EXCLUDED.updated_by_admin, is_deleted=EXCLUDED.is_deleted, updated_at=EXCLUDED.updated_at, deleted_at=EXCLUDED.deleted_at`, id, name, model.Description, provider, source, status, []byte(raw), model.UpdatedByAdmin, model.IsDeleted, createdAt, updatedAt, deletedAt); err != nil {
 			return report, fmt.Errorf("%w: persist model catalog", ErrImportDB)
 		}
 		report.Applied++

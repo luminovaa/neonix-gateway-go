@@ -22,7 +22,6 @@ type neonixModelInput struct {
 	Description           string         `json:"description"`
 	Provider              string         `json:"provider"`
 	Source                string         `json:"source"`
-	RequiresPro           *bool          `json:"requiresPro"`
 	Status                string         `json:"status"`
 	MaxInputTokens        *int64         `json:"maxInputTokens"`
 	MaxOutputTokens       *int64         `json:"maxOutputTokens"`
@@ -37,7 +36,6 @@ type neonixModel struct {
 	ID             string         `json:"id"`
 	Name           string         `json:"name"`
 	Description    string         `json:"description,omitempty"`
-	RequiresPro    bool           `json:"requiresPro"`
 	Provider       string         `json:"provider"`
 	Source         string         `json:"source"`
 	Status         string         `json:"status"`
@@ -85,7 +83,7 @@ func (s *neonixModelCatalog) list(c *gin.Context) {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Model catalog is unavailable", "errorCode": "MODEL_CATALOG_UNAVAILABLE"})
 		return
 	}
-	rows, err := s.db.QueryContext(c.Request.Context(), `SELECT model_id, model_name, description, requires_pro, provider, source, status, is_deleted, updated_by_admin, raw_data, updated_at FROM neonix_model_catalog WHERE is_deleted = FALSE ORDER BY requires_pro DESC, model_name`)
+	rows, err := s.db.QueryContext(c.Request.Context(), `SELECT model_id, model_name, description, provider, source, status, is_deleted, updated_by_admin, raw_data, updated_at FROM neonix_model_catalog WHERE is_deleted = FALSE ORDER BY model_name`)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load models", "errorCode": "MODEL_LIST_FAILED"})
 		return
@@ -96,7 +94,7 @@ func (s *neonixModelCatalog) list(c *gin.Context) {
 		var m neonixModel
 		var raw []byte
 		var updated time.Time
-		if err := rows.Scan(&m.ID, &m.Name, &m.Description, &m.RequiresPro, &m.Provider, &m.Source, &m.Status, &m.IsDeleted, &m.UpdatedByAdmin, &raw, &updated); err != nil {
+		if err := rows.Scan(&m.ID, &m.Name, &m.Description, &m.Provider, &m.Source, &m.Status, &m.IsDeleted, &m.UpdatedByAdmin, &raw, &updated); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load models", "errorCode": "MODEL_LIST_FAILED"})
 			return
 		}
@@ -161,10 +159,6 @@ func normalizeModelInput(input *neonixModelInput) error {
 	return nil
 }
 
-func modelRequiresPro(input neonixModelInput) bool {
-	return input.RequiresPro != nil && *input.RequiresPro
-}
-
 var errModelIDRequired = &modelValidationError{"MODEL_ID_REQUIRED", "Model ID is required"}
 var errModelStatusInvalid = &modelValidationError{"MODEL_STATUS_INVALID", "Model status must be AVAILABLE or MAINTENANCE"}
 
@@ -189,8 +183,7 @@ func (s *neonixModelCatalog) save(c *gin.Context, update bool) {
 		var exists bool
 		var existingRaw []byte
 		var existingName, existingDescription, existingProvider, existingSource, existingStatus string
-		var existingRequiresPro bool
-		if err := s.db.QueryRowContext(c.Request.Context(), `SELECT EXISTS(SELECT 1 FROM neonix_model_catalog WHERE model_id=$1), COALESCE((SELECT model_name FROM neonix_model_catalog WHERE model_id=$1), ''), COALESCE((SELECT description FROM neonix_model_catalog WHERE model_id=$1), ''), COALESCE((SELECT provider FROM neonix_model_catalog WHERE model_id=$1), ''), COALESCE((SELECT source FROM neonix_model_catalog WHERE model_id=$1), ''), COALESCE((SELECT status FROM neonix_model_catalog WHERE model_id=$1), ''), COALESCE((SELECT requires_pro FROM neonix_model_catalog WHERE model_id=$1), FALSE), COALESCE((SELECT raw_data FROM neonix_model_catalog WHERE model_id=$1), '{}'::jsonb)`, input.ID).Scan(&exists, &existingName, &existingDescription, &existingProvider, &existingSource, &existingStatus, &existingRequiresPro, &existingRaw); err != nil {
+		if err := s.db.QueryRowContext(c.Request.Context(), `SELECT EXISTS(SELECT 1 FROM neonix_model_catalog WHERE model_id=$1), COALESCE((SELECT model_name FROM neonix_model_catalog WHERE model_id=$1), ''), COALESCE((SELECT description FROM neonix_model_catalog WHERE model_id=$1), ''), COALESCE((SELECT provider FROM neonix_model_catalog WHERE model_id=$1), ''), COALESCE((SELECT source FROM neonix_model_catalog WHERE model_id=$1), ''), COALESCE((SELECT status FROM neonix_model_catalog WHERE model_id=$1), ''), COALESCE((SELECT raw_data FROM neonix_model_catalog WHERE model_id=$1), '{}'::jsonb)`, input.ID).Scan(&exists, &existingName, &existingDescription, &existingProvider, &existingSource, &existingStatus, &existingRaw); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load model", "errorCode": "MODEL_LOAD_FAILED"})
 			return
 		}
@@ -213,9 +206,6 @@ func (s *neonixModelCatalog) save(c *gin.Context, update bool) {
 		if strings.TrimSpace(input.Status) == "" {
 			input.Status = existingStatus
 		}
-		if input.RequiresPro == nil {
-			input.RequiresPro = &existingRequiresPro
-		}
 		merged := map[string]any{}
 		if err := json.Unmarshal(existingRaw, &merged); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load model", "errorCode": "MODEL_LOAD_FAILED"})
@@ -232,7 +222,7 @@ func (s *neonixModelCatalog) save(c *gin.Context, update bool) {
 		return
 	}
 	raw, _ := json.Marshal(input.RawData)
-	_, err := s.db.ExecContext(c.Request.Context(), `INSERT INTO neonix_model_catalog (model_id, model_name, description, provider, source, requires_pro, status, raw_data, updated_by_admin, is_deleted, deleted_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,TRUE,FALSE,NULL) ON CONFLICT (model_id) DO UPDATE SET model_name=EXCLUDED.model_name, description=EXCLUDED.description, provider=EXCLUDED.provider, source=EXCLUDED.source, requires_pro=EXCLUDED.requires_pro, status=EXCLUDED.status, raw_data=EXCLUDED.raw_data, updated_by_admin=TRUE, is_deleted=FALSE, deleted_at=NULL, updated_at=NOW()`, input.ID, input.Name, input.Description, input.Provider, input.Source, modelRequiresPro(input), input.Status, raw)
+	_, err := s.db.ExecContext(c.Request.Context(), `INSERT INTO neonix_model_catalog (model_id, model_name, description, provider, source, status, raw_data, updated_by_admin, is_deleted, deleted_at) VALUES ($1,$2,$3,$4,$5,$6,$7,TRUE,FALSE,NULL) ON CONFLICT (model_id) DO UPDATE SET model_name=EXCLUDED.model_name, description=EXCLUDED.description, provider=EXCLUDED.provider, source=EXCLUDED.source, status=EXCLUDED.status, raw_data=EXCLUDED.raw_data, updated_by_admin=TRUE, is_deleted=FALSE, deleted_at=NULL, updated_at=NOW()`, input.ID, input.Name, input.Description, input.Provider, input.Source, input.Status, raw)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save model", "errorCode": "MODEL_SAVE_FAILED"})
 		return
@@ -248,7 +238,7 @@ func (s *neonixModelCatalog) get(c *gin.Context, id string, status int) {
 	var m neonixModel
 	var raw []byte
 	var updated time.Time
-	err := s.db.QueryRowContext(c.Request.Context(), `SELECT model_id, model_name, description, requires_pro, provider, source, status, is_deleted, updated_by_admin, raw_data, updated_at FROM neonix_model_catalog WHERE model_id=$1`, id).Scan(&m.ID, &m.Name, &m.Description, &m.RequiresPro, &m.Provider, &m.Source, &m.Status, &m.IsDeleted, &m.UpdatedByAdmin, &raw, &updated)
+	err := s.db.QueryRowContext(c.Request.Context(), `SELECT model_id, model_name, description, provider, source, status, is_deleted, updated_by_admin, raw_data, updated_at FROM neonix_model_catalog WHERE model_id=$1`, id).Scan(&m.ID, &m.Name, &m.Description, &m.Provider, &m.Source, &m.Status, &m.IsDeleted, &m.UpdatedByAdmin, &raw, &updated)
 	if err == sql.ErrNoRows {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Model not found", "errorCode": "MODEL_NOT_FOUND"})
 		return

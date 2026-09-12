@@ -17,15 +17,15 @@ func TestNeonixModelCatalogListReturnsDirectLegacyShape(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close()
 	mock.ExpectQuery("SELECT model_id, model_name").WillReturnRows(sqlmock.NewRows([]string{
-		"model_id", "model_name", "description", "requires_pro", "provider", "source", "status", "is_deleted", "updated_by_admin", "raw_data", "updated_at",
-	}).AddRow("oc/free", "Free", "", false, "oc", "oc", "AVAILABLE", false, false, []byte(`{"tokenLimits":{"maxInputTokens":64000,"maxOutputTokens":8192},"supportsToolCalling":true}`), time.Unix(1710000000, 0).UTC()))
+		"model_id", "model_name", "description", "provider", "source", "status", "is_deleted", "updated_by_admin", "raw_data", "updated_at",
+	}).AddRow("oc/free", "Free", "", "oc", "oc", "AVAILABLE", false, false, []byte(`{"tokenLimits":{"maxInputTokens":64000,"maxOutputTokens":8192},"supportsToolCalling":true}`), time.Unix(1710000000, 0).UTC()))
 
 	router := gin.New()
 	router.GET("/api/proxy/models", (&neonixModelCatalog{db: db}).list)
 	recorder := httptest.NewRecorder()
 	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/proxy/models", nil))
 	require.Equal(t, http.StatusOK, recorder.Code)
-	require.JSONEq(t, `[{"id":"oc/free","name":"Free","requiresPro":false,"provider":"oc","source":"oc","status":"AVAILABLE","isDeleted":false,"updatedByAdmin":false,"updatedAt":1710000000000,"tokenLimits":{"maxInputTokens":64000,"maxOutputTokens":8192},"maxInputTokens":64000,"maxOutputTokens":8192,"supportsToolCalling":true}]`, recorder.Body.String())
+	require.JSONEq(t, `[{"id":"oc/free","name":"Free","provider":"oc","source":"oc","status":"AVAILABLE","isDeleted":false,"updatedByAdmin":false,"updatedAt":1710000000000,"tokenLimits":{"maxInputTokens":64000,"maxOutputTokens":8192},"maxInputTokens":64000,"maxOutputTokens":8192,"supportsToolCalling":true}]`, recorder.Body.String())
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -33,7 +33,7 @@ func TestNeonixModelCatalogUpdateDoesNotCreateMissingModel(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
 	defer db.Close()
-	mock.ExpectQuery("SELECT EXISTS").WithArgs("missing").WillReturnRows(sqlmock.NewRows([]string{"exists", "name", "description", "provider", "source", "status", "requires_pro", "raw_data"}).AddRow(false, "", "", "", "", "", false, []byte(`{}`)))
+	mock.ExpectQuery("SELECT EXISTS").WithArgs("missing").WillReturnRows(sqlmock.NewRows([]string{"exists", "name", "description", "provider", "source", "status", "raw_data"}).AddRow(false, "", "", "", "", "", []byte(`{}`)))
 
 	router := gin.New()
 	router.PATCH("/api/proxy/models/*id", (&neonixModelCatalog{db: db}).update)
@@ -50,9 +50,9 @@ func TestNeonixModelCatalogUpdateMergesExistingRawMetadata(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
 	defer db.Close()
-	mock.ExpectQuery("SELECT EXISTS").WithArgs("oc/free").WillReturnRows(sqlmock.NewRows([]string{"exists", "name", "description", "provider", "source", "status", "requires_pro", "raw_data"}).AddRow(true, "Free", "old description", "oc", "oc", "AVAILABLE", false, []byte(`{"actualModelId":"free-upstream","sortOrder":3}`)))
-	mock.ExpectExec("INSERT INTO neonix_model_catalog").WithArgs("oc/free", "Free renamed", "old description", "oc", "oc", false, "AVAILABLE", sqlmock.AnyArg()).WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectQuery("SELECT model_id, model_name").WithArgs("oc/free").WillReturnRows(sqlmock.NewRows([]string{"model_id", "model_name", "description", "requires_pro", "provider", "source", "status", "is_deleted", "updated_by_admin", "raw_data", "updated_at"}).AddRow("oc/free", "Free renamed", "old description", false, "oc", "oc", "AVAILABLE", false, true, []byte(`{"actualModelId":"free-upstream","sortOrder":3,"modelProvider":"oc","status":"AVAILABLE"}`), time.Unix(1710000000, 0).UTC()))
+	mock.ExpectQuery("SELECT EXISTS").WithArgs("oc/free").WillReturnRows(sqlmock.NewRows([]string{"exists", "name", "description", "provider", "source", "status", "raw_data"}).AddRow(true, "Free", "old description", "oc", "oc", "AVAILABLE", []byte(`{"actualModelId":"free-upstream","sortOrder":3}`)))
+	mock.ExpectExec("INSERT INTO neonix_model_catalog").WithArgs("oc/free", "Free renamed", "old description", "oc", "oc", "AVAILABLE", sqlmock.AnyArg()).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery("SELECT model_id, model_name").WithArgs("oc/free").WillReturnRows(sqlmock.NewRows([]string{"model_id", "model_name", "description", "provider", "source", "status", "is_deleted", "updated_by_admin", "raw_data", "updated_at"}).AddRow("oc/free", "Free renamed", "old description", "oc", "oc", "AVAILABLE", false, true, []byte(`{"actualModelId":"free-upstream","sortOrder":3,"modelProvider":"oc","status":"AVAILABLE"}`), time.Unix(1710000000, 0).UTC()))
 
 	router := gin.New()
 	router.PATCH("/api/proxy/models/*id", (&neonixModelCatalog{db: db}).update)

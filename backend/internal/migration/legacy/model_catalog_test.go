@@ -15,7 +15,7 @@ func TestImportModelCatalogPreservesAdminAndSoftDeleteState(t *testing.T) {
 	defer db.Close()
 	mock.ExpectBegin()
 	mock.ExpectExec("INSERT INTO neonix_model_catalog").
-		WithArgs("oc/free", "Free", "desc", "oc", "oc", false, "MAINTENANCE", sqlmock.AnyArg(), true, true, sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
+		WithArgs("oc/free", "Free", "desc", "oc", "oc", "MAINTENANCE", sqlmock.AnyArg(), true, true, sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 	deleted := int64(1710000002000)
