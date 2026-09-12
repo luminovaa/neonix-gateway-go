@@ -250,6 +250,7 @@ func RegisterNeonixCompatibilityRoutes(
 	api.POST("/proxy/models", models.create)
 	api.PATCH("/proxy/models/*id", models.update)
 	api.DELETE("/proxy/models/*id", models.delete)
+	api.POST("/proxy/models/sync/providers/oc", models.syncOpenCode)
 	api.POST("/proxy/start", func(c *gin.Context) {
 		response.Success(c, gin.H{"ok": true, "running": true})
 	})

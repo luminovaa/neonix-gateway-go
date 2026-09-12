@@ -73,6 +73,7 @@ func TestNeonixCompatibilityRoutesAreAdminOnly(t *testing.T) {
 		"/api/proxy/config",
 		"/api/proxy/start",
 		"/api/proxy/stop",
+		"/api/proxy/models/sync/providers/oc",
 		"/api/api-keys/1/usage",
 		"/api/api-keys/1/access-stats",
 		"/api/api-keys/regenerate",

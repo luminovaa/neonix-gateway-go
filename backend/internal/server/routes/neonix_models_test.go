@@ -1,6 +1,8 @@
 package routes
 
 import (
+	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -9,8 +11,15 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/gin-gonic/gin"
+	"github.com/luminovaa/neonix-gateway-go/internal/provider/opencode"
 	"github.com/stretchr/testify/require"
 )
+
+type modelCatalogRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (fn modelCatalogRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return fn(req)
+}
 
 func TestNeonixModelCatalogListReturnsDirectLegacyShape(t *testing.T) {
 	db, mock, err := sqlmock.New()
@@ -77,3 +86,81 @@ func TestNormalizeModelInputRejectsInvalidStatusAndKeepsTechnicalMetadata(t *tes
 }
 
 func ptrInt64(value int64) *int64 { return &value }
+
+func TestPersistOpenCodeModelsSoftDeletesRetiredAndPreservesAdminRows(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+	mock.ExpectBegin()
+	mock.ExpectExec("INSERT INTO neonix_model_catalog").
+		WithArgs("oc/current", "Current", "free", sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery("SELECT model_id, updated_by_admin").WillReturnRows(sqlmock.NewRows([]string{"model_id", "updated_by_admin"}).
+		AddRow("oc/current", false).
+		AddRow("oc/retired", false).
+		AddRow("oc/custom", true))
+	mock.ExpectExec("UPDATE neonix_model_catalog SET is_deleted=TRUE").WithArgs("oc/retired").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	result, err := (&neonixModelCatalog{db: db}).persistOpenCodeModels(context.Background(), []opencode.FreeModel{{ID: "current", Name: "Current", Description: "free", OwnedBy: "opencode"}}, false)
+	require.NoError(t, err)
+	require.Equal(t, openCodeSyncResult{Provider: "oc", Upserted: 1, Removed: 1, Preserved: 1}, result)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestPersistOpenCodeModelsKeepsAdminOwnedConflictUntouched(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+	mock.ExpectBegin()
+	mock.ExpectExec("INSERT INTO neonix_model_catalog").WithArgs("oc/custom", "Remote", "remote", sqlmock.AnyArg()).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery("SELECT model_id, updated_by_admin").WillReturnRows(sqlmock.NewRows([]string{"model_id", "updated_by_admin"}).AddRow("oc/custom", true))
+	mock.ExpectCommit()
+
+	result, err := (&neonixModelCatalog{db: db}).persistOpenCodeModels(context.Background(), []opencode.FreeModel{{ID: "custom", Name: "Remote", Description: "remote"}}, false)
+	require.NoError(t, err)
+	require.Equal(t, 1, result.Upserted)
+	require.Zero(t, result.Removed)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestSyncOpenCodeFailurePreservesExistingCatalog(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+	mock.ExpectQuery("SELECT EXISTS").WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+	client := &http.Client{Transport: modelCatalogRoundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusBadGateway, Header: make(http.Header), Body: io.NopCloser(strings.NewReader("unavailable"))}, nil
+	})}
+	router := gin.New()
+	router.POST("/sync", (&neonixModelCatalog{db: db, httpClient: client}).syncOpenCode)
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/sync", nil))
+	require.Equal(t, http.StatusBadGateway, recorder.Code)
+	require.Contains(t, recorder.Body.String(), "MODEL_SYNC_UPSTREAM_UNAVAILABLE")
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestSyncOpenCodeBootstrapsFallbackOnlyWhenCatalogEmpty(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+	mock.ExpectQuery("SELECT EXISTS").WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
+	mock.ExpectBegin()
+	for range opencode.FallbackModels() {
+		mock.ExpectExec("INSERT INTO neonix_model_catalog").WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).WillReturnResult(sqlmock.NewResult(0, 1))
+	}
+	mock.ExpectQuery("SELECT model_id, updated_by_admin").WillReturnRows(sqlmock.NewRows([]string{"model_id", "updated_by_admin"}))
+	mock.ExpectCommit()
+	client := &http.Client{Transport: modelCatalogRoundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusBadGateway, Header: make(http.Header), Body: io.NopCloser(strings.NewReader("unavailable"))}, nil
+	})}
+	router := gin.New()
+	router.POST("/sync", (&neonixModelCatalog{db: db, httpClient: client}).syncOpenCode)
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/sync", nil))
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Contains(t, recorder.Body.String(), `"bootstrap":true`)
+	require.Contains(t, recorder.Body.String(), `"upserted":4`)
+	require.NoError(t, mock.ExpectationsWereMet())
+}

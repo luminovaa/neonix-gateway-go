@@ -1,16 +1,22 @@
 package routes
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/luminovaa/neonix-gateway-go/internal/provider/opencode"
 )
 
-type neonixModelCatalog struct{ db *sql.DB }
+type neonixModelCatalog struct {
+	db         *sql.DB
+	httpClient *http.Client
+}
 
 func modelPathID(c *gin.Context) string {
 	return strings.TrimPrefix(strings.TrimSpace(c.Param("id")), "/")
@@ -268,4 +274,130 @@ func (s *neonixModelCatalog) delete(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+type openCodeSyncResult struct {
+	Provider  string `json:"provider"`
+	Upserted  int    `json:"upserted"`
+	Removed   int    `json:"removed"`
+	Preserved int    `json:"preserved"`
+	Bootstrap bool   `json:"bootstrap"`
+	Warning   string `json:"warning,omitempty"`
+}
+
+func (s *neonixModelCatalog) syncOpenCode(c *gin.Context) {
+	if s == nil || s.db == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Model catalog is unavailable", "errorCode": "MODEL_CATALOG_UNAVAILABLE"})
+		return
+	}
+	models, err := opencode.FetchFreeModels(c.Request.Context(), s.httpClient)
+	bootstrap := false
+	warning := ""
+	if err != nil {
+		hasRows, countErr := s.hasOpenCodeRows(c.Request.Context())
+		if countErr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to inspect model catalog", "errorCode": "MODEL_SYNC_FAILED"})
+			return
+		}
+		if hasRows {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "OpenCode Zen model catalog is temporarily unavailable; existing models were preserved", "errorCode": "MODEL_SYNC_UPSTREAM_UNAVAILABLE"})
+			return
+		}
+		models = opencode.FallbackModels()
+		bootstrap = true
+		warning = "OpenCode Zen upstream was unavailable; bootstrapped the built-in free catalog"
+	}
+	result, err := s.persistOpenCodeModels(c.Request.Context(), models, bootstrap)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to synchronize OpenCode Zen models", "errorCode": "MODEL_SYNC_FAILED"})
+		return
+	}
+	result.Warning = warning
+	c.JSON(http.StatusOK, result)
+}
+
+func (s *neonixModelCatalog) hasOpenCodeRows(ctx context.Context) (bool, error) {
+	var exists bool
+	err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM neonix_model_catalog WHERE provider='oc')`).Scan(&exists)
+	return exists, err
+}
+
+func (s *neonixModelCatalog) persistOpenCodeModels(ctx context.Context, models []opencode.FreeModel, bootstrap bool) (openCodeSyncResult, error) {
+	result := openCodeSyncResult{Provider: "oc", Bootstrap: bootstrap}
+	if len(models) == 0 {
+		return result, errors.New("empty OpenCode Zen catalog")
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return result, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	activeIDs := make([]string, 0, len(models))
+	for _, model := range models {
+		modelID := "oc/" + strings.TrimPrefix(strings.TrimSpace(model.ID), "oc/")
+		actualID := strings.TrimPrefix(strings.TrimSpace(model.ID), "oc/")
+		if actualID == "" {
+			return result, errors.New("empty OpenCode Zen model ID")
+		}
+		raw, marshalErr := json.Marshal(map[string]any{
+			"id": modelID, "modelProvider": "oc", "actualModelId": actualID,
+			"sortOrder": model.SortOrder, "supportedInputTypes": []string{"text"},
+			"ownedBy": model.OwnedBy, "remote": model.Remote,
+			"tokenLimits": map[string]any{"maxInputTokens": 64000, "maxOutputTokens": 8192},
+		})
+		if marshalErr != nil {
+			return result, marshalErr
+		}
+		if _, err = tx.ExecContext(ctx, `INSERT INTO neonix_model_catalog (model_id, model_name, description, provider, source, status, raw_data, updated_by_admin, is_deleted, deleted_at) VALUES ($1,$2,$3,'oc','oc','AVAILABLE',$4,FALSE,FALSE,NULL) ON CONFLICT (model_id) DO UPDATE SET model_name=CASE WHEN neonix_model_catalog.updated_by_admin THEN neonix_model_catalog.model_name ELSE EXCLUDED.model_name END, description=CASE WHEN neonix_model_catalog.updated_by_admin THEN neonix_model_catalog.description ELSE EXCLUDED.description END, provider=CASE WHEN neonix_model_catalog.updated_by_admin THEN neonix_model_catalog.provider ELSE 'oc' END, source=CASE WHEN neonix_model_catalog.updated_by_admin THEN neonix_model_catalog.source ELSE 'oc' END, status=CASE WHEN neonix_model_catalog.updated_by_admin THEN neonix_model_catalog.status ELSE 'AVAILABLE' END, raw_data=CASE WHEN neonix_model_catalog.updated_by_admin THEN neonix_model_catalog.raw_data ELSE EXCLUDED.raw_data END, is_deleted=CASE WHEN neonix_model_catalog.updated_by_admin THEN neonix_model_catalog.is_deleted ELSE FALSE END, deleted_at=CASE WHEN neonix_model_catalog.updated_by_admin THEN neonix_model_catalog.deleted_at ELSE NULL END, updated_at=CASE WHEN neonix_model_catalog.updated_by_admin THEN neonix_model_catalog.updated_at ELSE NOW() END`, modelID, model.Name, model.Description, raw); err != nil {
+			return result, err
+		}
+		activeIDs = append(activeIDs, modelID)
+		result.Upserted++
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT model_id, updated_by_admin FROM neonix_model_catalog WHERE provider='oc' AND is_deleted=FALSE`)
+	if err != nil {
+		return result, err
+	}
+	type catalogState struct {
+		id    string
+		admin bool
+	}
+	states := make([]catalogState, 0)
+	for rows.Next() {
+		var state catalogState
+		if err := rows.Scan(&state.id, &state.admin); err != nil {
+			_ = rows.Close()
+			return result, err
+		}
+		states = append(states, state)
+	}
+	if err := rows.Close(); err != nil {
+		return result, err
+	}
+	if err := rows.Err(); err != nil {
+		return result, err
+	}
+	active := make(map[string]struct{}, len(activeIDs))
+	for _, id := range activeIDs {
+		active[id] = struct{}{}
+	}
+	for _, state := range states {
+		if _, found := active[state.id]; found {
+			continue
+		}
+		if state.admin {
+			result.Preserved++
+			continue
+		}
+		updated, updateErr := tx.ExecContext(ctx, `UPDATE neonix_model_catalog SET is_deleted=TRUE, deleted_at=NOW(), updated_at=NOW() WHERE model_id=$1 AND provider='oc' AND updated_by_admin=FALSE AND is_deleted=FALSE`, state.id)
+		if updateErr != nil {
+			return result, updateErr
+		}
+		count, _ := updated.RowsAffected()
+		result.Removed += int(count)
+	}
+	if err := tx.Commit(); err != nil {
+		return result, err
+	}
+	return result, nil
 }
