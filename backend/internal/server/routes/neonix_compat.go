@@ -189,4 +189,12 @@ func RegisterNeonixCompatibilityRoutes(
 		}
 		response.Success(c, gin.H{"providers": provider.BuildSummary(nil)})
 	})
+	api.GET("/providers/:id", func(c *gin.Context) {
+		definition, ok := provider.Lookup(c.Param("id"))
+		if !ok {
+			response.NotFound(c, "provider not found")
+			return
+		}
+		response.Success(c, definition)
+	})
 }

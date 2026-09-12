@@ -107,3 +107,26 @@ func TestNeonixCompatibilityRoutesAreAdminOnly(t *testing.T) {
 	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &accountsPayload))
 	require.Empty(t, accountsPayload.Accounts)
 }
+
+func TestNeonixProviderDetailUsesCanonicalRegistry(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	adminAuth := servermiddleware.AdminAuthMiddleware(func(c *gin.Context) { c.Next() })
+	passthroughAudit := servermiddleware.AuditLogMiddleware(func(c *gin.Context) { c.Next() })
+	RegisterNeonixCompatibilityRoutes(
+		router,
+		&handler.Handlers{Admin: &handler.AdminHandlers{Account: &adminhandler.AccountHandler{}}},
+		adminAuth, passthroughAudit, nil, nil,
+	)
+	req := httptest.NewRequest(http.MethodGet, "/api/providers/antigravity", nil)
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	require.Equal(t, http.StatusOK, resp.Code)
+	require.Contains(t, resp.Body.String(), `"id":"antigravity"`)
+	require.NotContains(t, resp.Body.String(), "access_token")
+
+	req = httptest.NewRequest(http.MethodGet, "/api/providers/does-not-exist", nil)
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	require.Equal(t, http.StatusNotFound, resp.Code)
+}
