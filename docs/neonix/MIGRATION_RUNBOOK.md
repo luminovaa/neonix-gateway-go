@@ -9,7 +9,7 @@ The Go backend is the production target. The Next.js Neonix application remains 
 3. Run `go run ./cmd/migrate --source accounts.json` from `backend/`. The default is a dry run. It emits only counts and redacted issue codes.
 4. Resolve every `blocked` issue. Migration must not proceed with an active account missing credentials or with duplicate IDs.
 5. Run `go run ./cmd/migrate --source accounts.json --apply --output normalized-accounts.json` and verify the output file permissions are `0600` and its hash is recorded in the cutover checklist.
-6. Import the normalized rows inside a PostgreSQL transaction using the Go account repository. Keep the original snapshot read-only until smoke tests and rollback checks pass.
+6. During the maintenance window, run `go run ./cmd/migrate --source accounts.json --apply --dsn "$NEONIX_MIGRATION_DSN"`. The importer opens one PostgreSQL transaction, matches by legacy ID (email fallback), updates credentials only on existing rows, and rolls back every row if any write fails. It reports `created`/`updated` counts without credential values. Keep the original snapshot read-only until smoke tests and rollback checks pass.
 
 The converter preserves provider credential bytes before encryption. Deprecated `bai`, `bb`, and `codebuff` records are reported as skipped and are not copied into the active Go store. No access, refresh, or API token is included in reports or command errors.
 
@@ -28,8 +28,8 @@ missing project identifier is persisted with a warning so the account can be
 checked again later.
 
 The compatibility surface is a staged cutover boundary. Codex, Grok, M365,
-remaining provider-specific account adapters, and the transactional database
-import still need their own reviewed slices before the Node backend is removed.
+remaining provider-specific account adapters, and encrypted runtime credential
+reads still need their own reviewed slices before the Node backend is removed.
 
 ## Cutover gates
 

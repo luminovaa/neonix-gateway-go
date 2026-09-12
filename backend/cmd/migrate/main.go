@@ -5,7 +5,9 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -14,7 +16,9 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
+	_ "github.com/lib/pq"
 	"github.com/luminovaa/neonix-gateway-go/internal/migration/legacy"
 	"github.com/luminovaa/neonix-gateway-go/internal/provider"
 	"github.com/luminovaa/neonix-gateway-go/internal/security/credentials"
@@ -26,7 +30,8 @@ type sourceEnvelope struct {
 
 func main() {
 	sourcePath := flag.String("source", "", "path to a JSON array or {\"accounts\": [...]} export")
-	outPath := flag.String("output", "", "write normalized encrypted accounts (requires --apply)")
+	outPath := flag.String("output", "", "write normalized encrypted accounts (requires --apply; optional with --dsn)")
+	dsn := flag.String("dsn", "", "PostgreSQL DSN for direct transactional import (or NEONIX_MIGRATION_DSN)")
 	apply := flag.Bool("apply", false, "write normalized rows instead of dry-run report")
 	deprecated := flag.String("deprecated", strings.Join(provider.DeprecatedIDs(), ","), "comma-separated providers that may be archived")
 	flag.Parse()
@@ -62,22 +67,52 @@ func main() {
 		writeReport(report)
 		return
 	}
-	if strings.TrimSpace(*outPath) == "" {
-		fatal("--output is required with --apply")
+	effectiveDSN := strings.TrimSpace(*dsn)
+	if effectiveDSN == "" {
+		effectiveDSN = strings.TrimSpace(os.Getenv("NEONIX_MIGRATION_DSN"))
 	}
-	data, err := json.MarshalIndent(struct {
-		Version  int                        `json:"version"`
-		Accounts []legacy.NormalizedAccount `json:"accounts"`
-	}{Version: 1, Accounts: normalized}, "", "  ")
+	if strings.TrimSpace(*outPath) == "" && effectiveDSN == "" {
+		fatal("--output or --dsn is required with --apply")
+	}
+	if strings.TrimSpace(*outPath) != "" {
+		data, err := json.MarshalIndent(struct {
+			Version  int                        `json:"version"`
+			Accounts []legacy.NormalizedAccount `json:"accounts"`
+		}{Version: 1, Accounts: normalized}, "", "  ")
+		if err != nil {
+			fatal("encode normalized accounts: %v", err)
+		}
+		if err := os.WriteFile(*outPath, append(data, '\n'), 0o600); err != nil {
+			fatal("write normalized accounts: %v", err)
+		}
+		sum := sha256.Sum256(data)
+		fmt.Printf("normalized_output_sha256=%s\n", hex.EncodeToString(sum[:]))
+	}
+	if effectiveDSN == "" {
+		writeReport(report)
+		return
+	}
+	importCtx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	db, err := sql.Open("postgres", effectiveDSN)
 	if err != nil {
-		fatal("encode normalized accounts: %v", err)
+		fatal("open migration database: %v", err)
 	}
-	if err := os.WriteFile(*outPath, append(data, '\n'), 0o600); err != nil {
-		fatal("write normalized accounts: %v", err)
+	defer db.Close()
+	if err := db.PingContext(importCtx); err != nil {
+		fatal("connect migration database")
+	}
+	importReport, err := legacy.ImportIntoPostgres(importCtx, db, normalized, codec, legacy.ImportOptions{})
+	if err != nil {
+		if errors.Is(err, legacy.ErrImportBlocked) {
+			writeImportReport(importReport)
+			os.Exit(2)
+		}
+		fatal("import normalized accounts: %v", err)
 	}
 	writeReport(report)
-	sum := sha256.Sum256(data)
-	fmt.Printf("normalized_output_sha256=%s\n", hex.EncodeToString(sum[:]))
+	data, _ := json.Marshal(importReport)
+	fmt.Printf("database_import=%s\n", data)
 }
 
 func readAccounts(path string) ([]legacy.Account, error) {
@@ -102,7 +137,15 @@ func readAccounts(path string) ([]legacy.Account, error) {
 }
 
 func writeReport(report legacy.Report) {
-	data, err := json.Marshal(report)
+	writeJSONReport(report)
+}
+
+func writeImportReport(report legacy.ImportReport) {
+	writeJSONReport(report)
+}
+
+func writeJSONReport(value any) {
+	data, err := json.Marshal(value)
 	if err != nil {
 		fatal("encode migration report: %v", err)
 	}
