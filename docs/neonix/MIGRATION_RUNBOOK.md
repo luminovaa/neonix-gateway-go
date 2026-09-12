@@ -2,6 +2,12 @@
 
 The Go backend is the production target. The Next.js Neonix application remains the product UI, and Python automation remains a separate worker for browser and mailbox tasks.
 
+Neonix always normalizes `run_mode` to `simple`. This is intentional for the
+private single-operator deployment: API-key authentication and operational
+usage logs remain active, while inherited balance, payment, subscription,
+redeem, affiliate, and member-management enforcement is not part of the
+production surface.
+
 ## Credential migration
 
 1. Export a consistent account snapshot from the current PostgreSQL database. Do not print the export or put it in a ticket.
@@ -53,8 +59,13 @@ idempotently; the typed admin settings surface remains under `/api/v1`.
 table and returns Go gateway host/port defaults. Credential-shaped fields are
 discarded at the compatibility boundary; API keys continue to use
 `/api/api-keys`. The status alias reports the Go process as the active gateway,
-while live proxy lifecycle, request logs, and model-catalog synchronization
-remain cutover gates until their Go services own the underlying state.
+and request logs and statistics are derived from the Go usage/error stores.
+The Go model catalog owns CRUD plus OpenCode Zen free-model synchronization;
+remaining provider-specific catalog synchronizers remain cutover gates.
+
+`/api/filters` is Go-owned. Mutations atomically refresh the compiled runtime
+snapshot, and the `/v1` gateway filters only request message/system text. Model
+IDs, tool schemas, URLs, credentials, and response bytes are not rewritten.
 
 Antigravity OAuth sessions use the existing Go PKCE service. The callback must
 be the exact `http://localhost:8080/callback` URL returned by `start`; the

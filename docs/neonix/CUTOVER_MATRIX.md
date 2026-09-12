@@ -19,11 +19,12 @@ same commit.
 | M365 provider OAuth | Node + Go compatibility slice | Go control-plane slice available | callback, `oid/tid`, reconnect fallback |
 | Outlook mailbox OAuth/poll | Node + Go compatibility slice, Python IMAP worker | Go control-plane slice available | worker key, single-flight poll, OTP/link sanitization |
 | Credential migration/envelope reads | Node export + Go importer | Go migration slice available | backup/restore, envelope key, provider smoke tests |
-| OpenCode Zen catalogue/warmup | Node catalogue + Go policy | policy only | Go catalogue persistence and sync parity |
-| Proxy model catalog | Node compatibility | Go persistence plus list/create/update/delete compatibility available; sync still Node-owned | catalog export/import reconciliation, provider sync parity, OpenCode retired-model smoke test |
-| Proxy panel/config/resilience | Node + Go compatibility | config/status aliases available; runtime panel still Node-owned | persisted config parity, live lifecycle/stats, URL state and resilience UI smoke test |
+| OpenCode Zen catalogue/warmup | Go | Go-owned | live sync and retired-model smoke test |
+| Proxy model catalog | Go | Go persistence plus list/create/update/delete and OpenCode sync available | catalog export/import reconciliation and remaining provider sync parity |
+| Proxy panel/config/resilience | Go compatibility | config/status, usage-derived stats/logs, and database-derived resilience coverage available | persisted config and UI smoke test |
 | Register and browser automation orchestration | Node + Python | Node-owned | job lifecycle and worker lease parity |
-| Settings, dashboard, chat, filters, admin pages | Node | Node-owned | web contract and visual regression parity |
+| Settings, dashboard, filters | Go compatibility | settings, usage analytics, and request filter runtime are Go-owned; chat and remaining admin pages are pending | web contract and visual regression parity |
+| SaaS payment/subscription/member surfaces | Disabled | Production routes removed; runtime forced to simple single-operator mode | remove dormant services, generated schema, and frontend artifacts |
 | Kiro/Qoder/CodeBuddy provider adapters | Node + Python | Node-owned | provider adapter feature slices |
 
 The Go service must not proxy a request to Node to satisfy an unfinished row.
