@@ -7,6 +7,10 @@ private single-operator deployment: API-key authentication and operational
 usage logs remain active, while inherited balance, payment, subscription,
 redeem, affiliate, and member-management enforcement is not part of the
 production surface.
+Public registration, promo/invitation validation, and user-facing OAuth/SSO
+routes are not registered. The local operator login, refresh/logout, password
+recovery, passkey login, and optional TOTP remain available. OAuth used to add
+provider accounts stays on the admin-only `/api/accounts/*/oauth/*` surface.
 
 ## Credential migration
 

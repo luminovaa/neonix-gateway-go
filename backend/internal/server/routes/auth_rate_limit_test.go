@@ -54,8 +54,6 @@ func TestAuthRoutesRateLimitFailCloseWhenRedisUnavailable(t *testing.T) {
 	paths := []string{
 		"/api/v1/auth/login",
 		"/api/v1/auth/login/2fa",
-		"/api/v1/auth/send-verify-code",
-		"/api/v1/auth/oauth/pending/send-verify-code",
 	}
 
 	for _, path := range paths {
@@ -75,8 +73,17 @@ func TestAuthRoutesDoNotExposePublicRegistration(t *testing.T) {
 	router := newAuthRoutesTestRouter(nil)
 	for _, path := range []string{
 		"/api/v1/auth/register",
+		"/api/v1/auth/send-verify-code",
 		"/api/v1/auth/validate-promo-code",
 		"/api/v1/auth/validate-invitation-code",
+		"/api/v1/auth/oauth/github/start",
+		"/api/v1/auth/oauth/google/start",
+		"/api/v1/auth/oauth/linuxdo/start",
+		"/api/v1/auth/oauth/wechat/start",
+		"/api/v1/auth/oauth/oidc/start",
+		"/api/v1/auth/oauth/dingtalk/start",
+		"/api/v1/auth/oauth/pending/create-account",
+		"/api/v1/auth/oauth/bind-token",
 	} {
 		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{}`))
 		req.Header.Set("Content-Type", "application/json")
