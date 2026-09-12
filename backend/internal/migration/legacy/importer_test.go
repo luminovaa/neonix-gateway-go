@@ -50,6 +50,9 @@ func TestImportIntoPostgresCreatesAccountAndKeepsSecretsOutOfReport(t *testing.T
 	mock.ExpectQuery(regexp.QuoteMeta(insertImportedAccountSQL)).
 		WithArgs("Primary", "antigravity", "oauth", sqlmock.AnyArg(), sqlmock.AnyArg(), 3, 50, "active", true, sqlmock.AnyArg(), sqlmock.AnyArg()).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(int64(41)))
+	mock.ExpectExec(regexp.QuoteMeta(upsertCredentialEnvelopeSQL)).
+		WithArgs(int64(41), account.Credential).
+		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 
 	report, err := ImportIntoPostgres(context.Background(), db, []NormalizedAccount{account}, codec, ImportOptions{Now: func() time.Time {
@@ -86,6 +89,9 @@ func TestImportIntoPostgresUpdatesByLegacyIDWithoutOverwritingLocalState(t *test
 	mock.ExpectExec(regexp.QuoteMeta(updateImportedAccountSQL)).
 		WithArgs("antigravity", "oauth", sqlmock.AnyArg(), sqlmock.AnyArg(), int64(99)).
 		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(regexp.QuoteMeta(upsertCredentialEnvelopeSQL)).
+		WithArgs(int64(99), account.Credential).
+		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 
 	report, err := ImportIntoPostgres(context.Background(), db, []NormalizedAccount{account}, codec, ImportOptions{})
@@ -116,6 +122,8 @@ func TestImportIntoPostgresRollsBackAllRowsOnDatabaseFailure(t *testing.T) {
 		WillReturnError(sql.ErrNoRows)
 	mock.ExpectQuery(regexp.QuoteMeta(insertImportedAccountSQL)).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(int64(1)))
+	mock.ExpectExec(regexp.QuoteMeta(upsertCredentialEnvelopeSQL)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectQuery(regexp.QuoteMeta(findExistingAccountSQL)).
 		WithArgs("legacy-second", "second@example.com", "antigravity").
 		WillReturnError(sql.ErrConnDone)

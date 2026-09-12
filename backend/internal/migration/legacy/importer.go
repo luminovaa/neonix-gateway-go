@@ -60,6 +60,7 @@ type preparedAccount struct {
 	Provider    string
 	Type        string
 	Name        string
+	Envelope    string
 	Credentials []byte
 	Extra       []byte
 	Status      string
@@ -98,6 +99,14 @@ SET platform = $1,
     updated_at = NOW()
 WHERE id = $5 AND deleted_at IS NULL`
 
+const upsertCredentialEnvelopeSQL = `
+INSERT INTO account_credential_envelopes (account_id, envelope, key_version)
+VALUES ($1, $2, 1)
+ON CONFLICT (account_id) DO UPDATE
+SET envelope = EXCLUDED.envelope,
+    key_version = EXCLUDED.key_version,
+    updated_at = NOW()`
+
 // ImportIntoPostgres applies normalized accounts in one transaction. Existing
 // rows are matched by the stable legacy ID marker, then by provider + email.
 // Only credentials and migration markers are updated on an existing row;
@@ -135,6 +144,9 @@ func ImportIntoPostgres(ctx context.Context, db *sql.DB, accounts []NormalizedAc
 				account.CreatedAt, account.LastUsedAt).Scan(&existingID); err != nil {
 				return report, fmt.Errorf("%w: insert account", ErrImportDB)
 			}
+			if _, err := tx.ExecContext(ctx, upsertCredentialEnvelopeSQL, existingID, account.Envelope); err != nil {
+				return report, fmt.Errorf("%w: persist credential envelope", ErrImportDB)
+			}
 			created++
 		case err != nil:
 			return report, fmt.Errorf("%w: find account", ErrImportDB)
@@ -147,6 +159,9 @@ func ImportIntoPostgres(ctx context.Context, db *sql.DB, accounts []NormalizedAc
 			affected, err := result.RowsAffected()
 			if err != nil || affected != 1 {
 				return report, fmt.Errorf("%w: account disappeared during update", ErrImportDB)
+			}
+			if _, err := tx.ExecContext(ctx, upsertCredentialEnvelopeSQL, existingID, account.Envelope); err != nil {
+				return report, fmt.Errorf("%w: persist credential envelope", ErrImportDB)
 			}
 			updated++
 		}
@@ -203,7 +218,7 @@ func prepareAccounts(accounts []NormalizedAccount, codec *credentials.Envelope, 
 		}
 		prepared = append(prepared, preparedAccount{
 			ID: account.ID, Provider: account.Provider, Type: account.Type,
-			Name: accountName(account), Credentials: credentialJSON, Extra: extra,
+			Name: accountName(account), Envelope: account.Credential, Credentials: credentialJSON, Extra: extra,
 			Status: importStatus(account), Schedulable: importSchedulable(account),
 			CreatedAt: createdAt, LastUsedAt: unixMillis(account.LastUsedAt),
 		})
