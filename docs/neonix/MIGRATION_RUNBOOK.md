@@ -6,9 +6,9 @@ The Go backend is the production target. The Next.js Neonix application remains 
 
 1. Export a consistent account snapshot from the current PostgreSQL database. Do not print the export or put it in a ticket.
 2. Set `NEONIX_CREDENTIAL_KEY` to the 32-byte key that will be used by the Go deployment. Keep it in the deployment secret store.
-3. Run `go run ./cmd/migrate --source accounts.json` from `backend/`. The default is a dry run. It emits only counts and redacted issue codes.
+3. Run `go run ./cmd/migrate --source migration-export.json` from `backend/`. The source may contain `accounts`, `apiKeys`, and the allowlisted `settings` object. The default is a dry run; it emits only counts and redacted issue codes.
 4. Resolve every `blocked` issue. Migration must not proceed with an active account missing credentials or with duplicate IDs.
-5. Run `go run ./cmd/migrate --source accounts.json --apply --output normalized-accounts.json` and verify the output file permissions are `0600` and its hash is recorded in the cutover checklist.
+5. Run `go run ./cmd/migrate --source migration-export.json --apply --output normalized-accounts.json` and verify the output file permissions are `0600` and its hash is recorded in the cutover checklist. The output artifact contains encrypted account envelopes only; API-key bearer values and settings values are never written to it.
 6. Start the Go binary once (or apply migration `238_account_credential_envelopes.sql`) so the encrypted handoff table exists, then during the maintenance window run `go run ./cmd/migrate --source accounts.json --apply --dsn "$NEONIX_MIGRATION_DSN"`. The importer opens one PostgreSQL transaction, matches by legacy ID (email fallback), updates credentials only on existing rows, writes the encrypted envelope, and rolls back every row if any write fails. It reports `created`/`updated` counts without credential values. Start the Go service with the same `NEONIX_CREDENTIAL_KEY`; migrated account reads then decrypt the envelope before an adapter sees credentials. Keep the original snapshot read-only until smoke tests and rollback checks pass.
 
 Gateway API keys need the same maintenance-window treatment: the Go schema

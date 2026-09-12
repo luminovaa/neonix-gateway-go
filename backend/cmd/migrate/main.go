@@ -1,4 +1,5 @@
-// Command migrate performs the one-time legacy Node account conversion.
+// Command migrate performs the one-time legacy Node account and gateway-key
+// conversion.
 // It is intentionally file-based first: the production wrapper can export a
 // consistent PostgreSQL snapshot, run this command in dry-run mode, and then
 // apply the verified normalized rows in one transaction.
@@ -25,11 +26,16 @@ import (
 )
 
 type sourceEnvelope struct {
-	Accounts []legacy.Account `json:"accounts"`
+	Accounts []legacy.Account           `json:"accounts"`
+	APIKeys  []legacy.APIKey            `json:"apiKeys"`
+	Settings map[string]json.RawMessage `json:"settings"`
+	// api_keys is accepted for exports produced by SQL tooling that preserves
+	// the database column naming convention.
+	LegacyAPIKeys []legacy.APIKey `json:"api_keys"`
 }
 
 func main() {
-	sourcePath := flag.String("source", "", "path to a JSON array or {\"accounts\": [...]} export")
+	sourcePath := flag.String("source", "", "path to an account array or {\"accounts\": [...], \"apiKeys\": [...], \"settings\": {...}} export")
 	outPath := flag.String("output", "", "write normalized encrypted accounts (requires --apply; optional with --dsn)")
 	dsn := flag.String("dsn", "", "PostgreSQL DSN for direct transactional import (or NEONIX_MIGRATION_DSN)")
 	apply := flag.Bool("apply", false, "write normalized rows instead of dry-run report")
@@ -48,7 +54,7 @@ func main() {
 	if err != nil {
 		fatal("credential codec unavailable: %v", err)
 	}
-	accounts, err := readAccounts(*sourcePath)
+	accounts, apiKeys, settings, err := readMigrationSource(*sourcePath)
 	if err != nil {
 		fatal("read migration source: %v", err)
 	}
@@ -59,12 +65,28 @@ func main() {
 		}
 	}
 	normalized, report := legacy.Convert(accounts, codec, legacy.Options{DeprecatedProviders: deprecatedProviders})
+	normalizedAPIKeys, apiKeyReport := legacy.NormalizeAPIKeys(apiKeys, time.Now)
+	normalizedSettings, settingsReport := legacy.NormalizeSettings(settings)
 	if report.Blocked > 0 {
 		writeReport(report)
 		os.Exit(2)
 	}
+	if apiKeyReport.Failed > 0 {
+		writeReport(apiKeyReport)
+		os.Exit(2)
+	}
+	if settingsReport.Failed > 0 {
+		writeReport(settingsReport)
+		os.Exit(2)
+	}
 	if !*apply {
 		writeReport(report)
+		if len(apiKeys) > 0 {
+			writeReport(apiKeyReport)
+		}
+		if len(settings) > 0 {
+			writeReport(settingsReport)
+		}
 		return
 	}
 	effectiveDSN := strings.TrimSpace(*dsn)
@@ -90,6 +112,12 @@ func main() {
 	}
 	if effectiveDSN == "" {
 		writeReport(report)
+		if len(apiKeys) > 0 {
+			writeReport(apiKeyReport)
+		}
+		if len(settings) > 0 {
+			writeReport(settingsReport)
+		}
 		return
 	}
 	importCtx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
@@ -113,30 +141,49 @@ func main() {
 	writeReport(report)
 	data, _ := json.Marshal(importReport)
 	fmt.Printf("database_import=%s\n", data)
+	if len(normalizedAPIKeys) > 0 {
+		keyImportReport, err := legacy.ImportAPIKeysIntoPostgres(importCtx, db, normalizedAPIKeys, time.Now)
+		if err != nil {
+			fatal("import API keys: %v", err)
+		}
+		keyData, _ := json.Marshal(keyImportReport)
+		fmt.Printf("api_key_database_import=%s\n", keyData)
+	}
+	if len(normalizedSettings) > 0 {
+		settingsImportReport, err := legacy.ImportSettingsIntoPostgres(importCtx, db, normalizedSettings, time.Now)
+		if err != nil {
+			fatal("import settings: %v", err)
+		}
+		settingsData, _ := json.Marshal(settingsImportReport)
+		fmt.Printf("settings_database_import=%s\n", settingsData)
+	}
 }
 
-func readAccounts(path string) ([]legacy.Account, error) {
+func readMigrationSource(path string) ([]legacy.Account, []legacy.APIKey, map[string]json.RawMessage, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
 	defer f.Close()
 	data, err := io.ReadAll(f)
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
 	var accounts []legacy.Account
 	if err := json.Unmarshal(data, &accounts); err == nil {
-		return accounts, nil
+		return accounts, nil, nil, nil
 	}
 	var envelope sourceEnvelope
 	if err := json.Unmarshal(data, &envelope); err != nil {
-		return nil, errors.New("source must be a JSON account array or object with accounts")
+		return nil, nil, nil, errors.New("source must be a JSON account array or object with accounts")
 	}
-	return envelope.Accounts, nil
+	if len(envelope.APIKeys) == 0 {
+		envelope.APIKeys = envelope.LegacyAPIKeys
+	}
+	return envelope.Accounts, envelope.APIKeys, envelope.Settings, nil
 }
 
-func writeReport(report legacy.Report) {
+func writeReport(report any) {
 	writeJSONReport(report)
 }
 
