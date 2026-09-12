@@ -1598,6 +1598,9 @@ func (r *accountRepository) UpdateGrokOAuthCredentialsIfUnchanged(
 	expectedProxyID *int64,
 	credentials map[string]any,
 ) (bool, error) {
+	if err := r.credentialEnvelopeConfigError(); err != nil {
+		return false, err
+	}
 	if r == nil || r.sql == nil {
 		return false, errors.New("account repository SQL executor is not configured")
 	}
@@ -1642,6 +1645,15 @@ func (r *accountRepository) UpdateGrokOAuthCredentialsIfUnchanged(
 	}
 	if rowsAffected == 0 {
 		return false, nil
+	}
+	if r.credentialCodec != nil {
+		envelope, err := sealAccountCredentials(r.credentialCodec, credentials)
+		if err != nil {
+			return false, err
+		}
+		if err := persistAccountCredentialEnvelope(ctx, r.sql, id, envelope); err != nil {
+			return false, err
+		}
 	}
 	r.syncSchedulerAccountSnapshotDetached(ctx, id)
 	return true, nil
@@ -2952,6 +2964,9 @@ func ollamaCloudUsageSnapshotClearRequested(extra map[string]any) bool {
 }
 
 func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates service.AccountBulkUpdate) (int64, error) {
+	if err := r.credentialEnvelopeConfigError(); err != nil {
+		return 0, err
+	}
 	if len(ids) == 0 {
 		return 0, nil
 	}
@@ -3142,6 +3157,11 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 		}
 		if rows != expectedRows {
 			return 0, service.ErrUpstreamBillingProbeAccountInvalid
+		}
+	}
+	if r.credentialCodec != nil && len(updates.Credentials) > 0 && rows > 0 {
+		if err := syncAccountCredentialEnvelopes(ctx, exec, r.credentialCodec, ids); err != nil {
+			return 0, err
 		}
 	}
 	if rows > 0 {

@@ -130,6 +130,70 @@ SET envelope = EXCLUDED.envelope,
 	return err
 }
 
+func syncAccountCredentialEnvelopes(ctx context.Context, exec sqlExecutor, codec *credentials.Envelope, accountIDs []int64) error {
+	if codec == nil || exec == nil || len(accountIDs) == 0 {
+		return nil
+	}
+	unique := make([]int64, 0, len(accountIDs))
+	seen := make(map[int64]struct{}, len(accountIDs))
+	for _, id := range accountIDs {
+		if id <= 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		unique = append(unique, id)
+	}
+	type row struct {
+		id          int64
+		credentials []byte
+	}
+	rowsToSeal := make([]row, 0, len(unique))
+	for start := 0; start < len(unique); start += postgresParameterBatchSize {
+		end := start + postgresParameterBatchSize
+		if end > len(unique) {
+			end = len(unique)
+		}
+		rows, err := exec.QueryContext(ctx, `SELECT id, credentials FROM accounts WHERE id = ANY($1) AND deleted_at IS NULL`, pq.Array(unique[start:end]))
+		if err != nil {
+			return err
+		}
+		for rows.Next() {
+			var item row
+			if err := rows.Scan(&item.id, &item.credentials); err != nil {
+				_ = rows.Close()
+				return err
+			}
+			rowsToSeal = append(rowsToSeal, item)
+		}
+		if err := rows.Err(); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		if err := rows.Close(); err != nil {
+			return err
+		}
+	}
+	for _, item := range rowsToSeal {
+		var values map[string]any
+		if len(item.credentials) == 0 || string(item.credentials) == "null" {
+			values = map[string]any{}
+		} else if err := json.Unmarshal(item.credentials, &values); err != nil || values == nil {
+			return errors.New("account credentials JSON is invalid")
+		}
+		envelope, err := sealAccountCredentials(codec, values)
+		if err != nil {
+			return err
+		}
+		if err := persistAccountCredentialEnvelope(ctx, exec, item.id, envelope); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // compile-time assertion keeps the helper usable with *sql.DB and *sql.Tx.
 var _ sqlExecutor = (*sql.DB)(nil)
 

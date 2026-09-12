@@ -60,3 +60,19 @@ func TestOpenAccountCredentialEnvelopeRejectsMalformedPayload(t *testing.T) {
 	_, err = loadAccountCredentialEnvelopes(context.Background(), nil, []int64{1})
 	require.NoError(t, err)
 }
+
+func TestSyncAccountCredentialEnvelopesSealsCurrentJSONBValues(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+	codec, err := credentials.New([]byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT id, credentials FROM accounts WHERE id = ANY($1) AND deleted_at IS NULL")).
+		WithArgs(sqlmock.AnyArg()).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "credentials"}).AddRow(int64(4), []byte(`{"access_token":"secret"}`)))
+	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO account_credential_envelopes (account_id, envelope, key_version)")).
+		WithArgs(int64(4), sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	require.NoError(t, syncAccountCredentialEnvelopes(context.Background(), db, codec, []int64{4}))
+	require.NoError(t, mock.ExpectationsWereMet())
+}
