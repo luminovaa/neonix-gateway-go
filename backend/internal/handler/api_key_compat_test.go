@@ -19,7 +19,16 @@ import (
 
 type compatAPIKeyRepoStub struct {
 	service.APIKeyRepository
-	keys []*service.APIKey
+	keys   []*service.APIKey
+	legacy map[string]int64
+}
+
+func (r *compatAPIKeyRepoStub) GetByLegacyID(_ context.Context, legacyID string) (*service.APIKey, error) {
+	id, ok := r.legacy[legacyID]
+	if !ok {
+		return nil, service.ErrAPIKeyNotFound
+	}
+	return r.GetByID(context.Background(), id)
 }
 
 func (r *compatAPIKeyRepoStub) ListByUserID(_ context.Context, userID int64, _ pagination.PaginationParams, _ service.APIKeyListFilters) ([]service.APIKey, *pagination.PaginationResult, error) {
@@ -225,6 +234,17 @@ func TestAPIKeyCompatUsageAndAccessStatsUseGoAggregates(t *testing.T) {
 	require.NoError(t, json.Unmarshal(accessRec.Body.Bytes(), &accessEnvelope))
 	require.Equal(t, int64(2), accessEnvelope.Data.UniqueIPs)
 	require.NotNil(t, accessEnvelope.Data.LastAccessed)
+}
+
+func TestMeCompatCanResolveLegacyTextIDForUsage(t *testing.T) {
+	repo := &compatAPIKeyRepoStub{
+		keys:   []*service.APIKey{{ID: 4, UserID: 7, Name: "default", Key: "neon-default-key", Status: service.StatusAPIKeyActive, CreatedAt: time.Now()}},
+		legacy: map[string]int64{"legacy-key-uuid": 4},
+	}
+	h := newCompatAPIKeyHandler(repo)
+	key, err := h.apiKeyService.GetByCompatID(context.Background(), 7, "legacy-key-uuid")
+	require.NoError(t, err)
+	require.Equal(t, int64(4), key.ID)
 }
 
 func TestRegenerateCompatCreatesReplacementBeforeRemovingDefault(t *testing.T) {

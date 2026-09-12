@@ -11,7 +11,7 @@ same commit.
 | Operator auth aliases (`/api/health`, `/api/auth/*`) | Node compatibility | Go compatibility slice available | login/refresh/current-user smoke test and session-binding checks |
 | `/v1/*` streaming gateway | Go/Sub2API baseline | Go-owned for migrated adapters | streaming, cancellation, pre-first-byte failover |
 | Accounts CRUD/list/IDs/groups | Node compatibility + Go `/api` slice | Go compatibility available | persistence parity and UI smoke test |
-| API keys (`/api/api-keys`) | Node compatibility | Go compatibility slice available | default-key bootstrap, create/delete, usage/access smoke test |
+| API keys (`/api/api-keys`) | Node compatibility | Go compatibility slice available; legacy-id mapping migration added | key import, default-key bootstrap, create/delete, usage/access smoke test |
 | Tray settings (`/api/settings`) | Node compatibility | Go compatibility slice available | flat JSON read/write and cache invalidation smoke test |
 | Antigravity OAuth/gateway | Node + Go compatibility slice | Go provider slice available | live OAuth and Gemini/Claude request smoke tests |
 | Codex device OAuth | Node + Go compatibility slice | Go provider slice available | device approval, refresh, auth.json import |

@@ -11,6 +11,15 @@ The Go backend is the production target. The Next.js Neonix application remains 
 5. Run `go run ./cmd/migrate --source accounts.json --apply --output normalized-accounts.json` and verify the output file permissions are `0600` and its hash is recorded in the cutover checklist.
 6. Start the Go binary once (or apply migration `238_account_credential_envelopes.sql`) so the encrypted handoff table exists, then during the maintenance window run `go run ./cmd/migrate --source accounts.json --apply --dsn "$NEONIX_MIGRATION_DSN"`. The importer opens one PostgreSQL transaction, matches by legacy ID (email fallback), updates credentials only on existing rows, writes the encrypted envelope, and rolls back every row if any write fails. It reports `created`/`updated` counts without credential values. Start the Go service with the same `NEONIX_CREDENTIAL_KEY`; migrated account reads then decrypt the envelope before an adapter sees credentials. Keep the original snapshot read-only until smoke tests and rollback checks pass.
 
+Gateway API keys need the same maintenance-window treatment: the Go schema
+uses numeric IDs while Neonix's table uses text IDs. Apply migration
+`239_neonix_legacy_api_key_ids.sql`, import each key into the Go `api_keys`
+table under the single operator, and record its original ID in
+`neonix_legacy_api_key_ids`. The compatibility routes accept either the native
+numeric ID or that mapped legacy ID, so existing client configurations and
+usage links keep working after cutover. Keep the legacy `api_key_usage` and
+access-log snapshot read-only until a dedicated history importer is verified.
+
 The converter preserves provider credential bytes before encryption. Deprecated `bai`, `bb`, and `codebuff` records are reported as skipped and are not copied into the active Go store. No access, refresh, or API token is included in reports or command errors.
 
 ## Current compatibility slice

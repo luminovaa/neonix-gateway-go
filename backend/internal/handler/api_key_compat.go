@@ -277,12 +277,17 @@ func (h *APIKeyHandler) DeleteCompat(c *gin.Context) {
 	if !ok {
 		return
 	}
-	id, err := strconv.ParseInt(strings.TrimSpace(c.Param("id")), 10, 64)
-	if err != nil || id <= 0 {
+	rawID := strings.TrimSpace(c.Param("id"))
+	if rawID == "" {
 		response.ErrorWithDetails(c, http.StatusBadRequest, "Invalid API key ID", "API_KEY_ID_INVALID", nil)
 		return
 	}
-	if err := h.apiKeyService.Delete(c.Request.Context(), id, subject.UserID); err != nil {
+	key, err := h.apiKeyService.GetByCompatID(c.Request.Context(), subject.UserID, rawID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if err := h.apiKeyService.Delete(c.Request.Context(), key.ID, subject.UserID); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -297,18 +302,14 @@ func (h *APIKeyHandler) GetUsageCompat(c *gin.Context) {
 	if !ok {
 		return
 	}
-	id, err := strconv.ParseInt(strings.TrimSpace(c.Param("id")), 10, 64)
-	if err != nil || id <= 0 {
+	rawID := strings.TrimSpace(c.Param("id"))
+	if rawID == "" {
 		response.ErrorWithDetails(c, http.StatusBadRequest, "Invalid API key ID", "API_KEY_ID_INVALID", nil)
 		return
 	}
-	key, err := h.apiKeyService.GetByID(c.Request.Context(), id)
+	key, err := h.apiKeyService.GetByCompatID(c.Request.Context(), subject.UserID, rawID)
 	if err != nil {
 		response.ErrorFrom(c, err)
-		return
-	}
-	if key.UserID != subject.UserID {
-		response.NotFound(c, "API key not found")
 		return
 	}
 	if h.usageService == nil {
@@ -316,17 +317,17 @@ func (h *APIKeyHandler) GetUsageCompat(c *gin.Context) {
 		return
 	}
 	startTime, endTime := neonixAllTimeUsageRange()
-	stats, err := h.usageService.GetStatsByAPIKey(c.Request.Context(), id, startTime, endTime)
+	stats, err := h.usageService.GetStatsByAPIKey(c.Request.Context(), key.ID, startTime, endTime)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
-	requestStats, err := h.usageService.GetAPIKeyRequestStats(c.Request.Context(), id, startTime, endTime)
+	requestStats, err := h.usageService.GetAPIKeyRequestStats(c.Request.Context(), key.ID, startTime, endTime)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
-	models, err := h.usageService.GetAPIKeyModelStats(c.Request.Context(), id, startTime, endTime)
+	models, err := h.usageService.GetAPIKeyModelStats(c.Request.Context(), key.ID, startTime, endTime)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -357,25 +358,21 @@ func (h *APIKeyHandler) GetAccessStatsCompat(c *gin.Context) {
 	if !ok {
 		return
 	}
-	id, err := strconv.ParseInt(strings.TrimSpace(c.Param("id")), 10, 64)
-	if err != nil || id <= 0 {
+	rawID := strings.TrimSpace(c.Param("id"))
+	if rawID == "" {
 		response.ErrorWithDetails(c, http.StatusBadRequest, "Invalid API key ID", "API_KEY_ID_INVALID", nil)
 		return
 	}
-	key, err := h.apiKeyService.GetByID(c.Request.Context(), id)
+	key, err := h.apiKeyService.GetByCompatID(c.Request.Context(), subject.UserID, rawID)
 	if err != nil {
 		response.ErrorFrom(c, err)
-		return
-	}
-	if key.UserID != subject.UserID {
-		response.NotFound(c, "API key not found")
 		return
 	}
 	if h.usageService == nil {
 		response.ErrorWithDetails(c, http.StatusServiceUnavailable, "API key access statistics are unavailable", "API_KEY_ACCESS_STATS_UNAVAILABLE", nil)
 		return
 	}
-	stats, err := h.usageService.GetAPIKeyAccessStats(c.Request.Context(), id)
+	stats, err := h.usageService.GetAPIKeyAccessStats(c.Request.Context(), key.ID)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
