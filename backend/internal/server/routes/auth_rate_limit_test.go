@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/luminovaa/neonix-gateway-go/internal/handler"
 	servermiddleware "github.com/luminovaa/neonix-gateway-go/internal/server/middleware"
-	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 )
@@ -52,7 +52,6 @@ func TestAuthRoutesRateLimitFailCloseWhenRedisUnavailable(t *testing.T) {
 
 	router := newAuthRoutesTestRouter(rdb)
 	paths := []string{
-		"/api/v1/auth/register",
 		"/api/v1/auth/login",
 		"/api/v1/auth/login/2fa",
 		"/api/v1/auth/send-verify-code",
@@ -69,5 +68,20 @@ func TestAuthRoutesRateLimitFailCloseWhenRedisUnavailable(t *testing.T) {
 
 		require.Equal(t, http.StatusTooManyRequests, w.Code, "path=%s", path)
 		require.Contains(t, w.Body.String(), "rate limit exceeded", "path=%s", path)
+	}
+}
+
+func TestAuthRoutesDoNotExposePublicRegistration(t *testing.T) {
+	router := newAuthRoutesTestRouter(nil)
+	for _, path := range []string{
+		"/api/v1/auth/register",
+		"/api/v1/auth/validate-promo-code",
+		"/api/v1/auth/validate-invitation-code",
+	} {
+		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{}`))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		require.Equal(t, http.StatusNotFound, w.Code, "path=%s", path)
 	}
 }
