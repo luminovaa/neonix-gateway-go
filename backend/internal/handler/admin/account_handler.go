@@ -1511,7 +1511,7 @@ func (h *AccountHandler) ListMailboxAccountsCompat(c *gin.Context) {
 			}(),
 		})
 	}
-	response.Success(c, gin.H{"accounts": items})
+	mailboxSuccess(c, gin.H{"accounts": items})
 }
 
 // PollMailboxCompat calls the supported Python worker route. At most one
@@ -1576,7 +1576,7 @@ func (h *AccountHandler) PollMailboxCompat(c *gin.Context) {
 	if result != nil {
 		result.URL = normalizeMailboxHTTPSURL(result.URL)
 	}
-	response.Success(c, result)
+	mailboxSuccess(c, result)
 }
 
 func (h *AccountHandler) claimMailboxPoll(accountID int64) bool {
@@ -1673,7 +1673,7 @@ func (h *AccountHandler) StartMailboxOAuthCompat(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	response.Success(c, result)
+	mailboxSuccess(c, result)
 }
 
 func (h *AccountHandler) CompleteMailboxOAuthCompat(c *gin.Context) {
@@ -1739,7 +1739,7 @@ func (h *AccountHandler) CompleteMailboxOAuthCompat(c *gin.Context) {
 		return
 	}
 	h.mailboxOAuthService.Consume(req.LoginID)
-	response.Success(c, gin.H{"status": "complete", "created": created, "account": h.buildAccountResponseWithRuntime(c.Request.Context(), account)})
+	mailboxSuccess(c, gin.H{"status": "complete", "created": created, "account": h.buildAccountResponseWithRuntime(c.Request.Context(), account)})
 }
 
 func (h *AccountHandler) CancelMailboxOAuthCompat(c *gin.Context) {
@@ -1751,7 +1751,11 @@ func (h *AccountHandler) CancelMailboxOAuthCompat(c *gin.Context) {
 			h.mailboxOAuthService.Cancel(req.LoginID)
 		}
 	}
-	response.Success(c, gin.H{"ok": true, "cancelled": true})
+	mailboxSuccess(c, gin.H{"ok": true, "cancelled": true})
+}
+
+func mailboxSuccess(c *gin.Context, data any) {
+	response.Success(c, gin.H{"success": true, "data": data})
 }
 
 // StartAntigravityOAuthCompat adapts the existing Go OAuth session to the

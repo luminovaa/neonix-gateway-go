@@ -47,7 +47,9 @@ func TestPollMailboxCompatUsesPythonWorkerAndRejectsUnsafeURL(t *testing.T) {
 	require.NotContains(t, writer.Body.String(), "refresh-secret")
 	var envelope map[string]any
 	require.NoError(t, json.Unmarshal(writer.Body.Bytes(), &envelope))
-	data, ok := envelope["data"].(map[string]any)
+	outerData, ok := envelope["data"].(map[string]any)
+	require.True(t, ok)
+	data, ok := outerData["data"].(map[string]any)
 	require.True(t, ok)
 	require.Equal(t, "654321", data["otp"])
 	require.Empty(t, data["url"])
