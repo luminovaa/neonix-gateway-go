@@ -136,6 +136,20 @@
       "success": {"status": 200, "contentType": "application/json", "sanitized": true}
     },
     {
+      "name": "proxy-resilience",
+      "method": "GET",
+      "path": "/api/proxy/resilience",
+      "auth": "operator",
+      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+    },
+    {
+      "name": "proxy-model-lock-clear",
+      "method": "POST",
+      "path": "/api/proxy/resilience/model-locks/clear",
+      "auth": "operator",
+      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+    },
+    {
       "name": "models-list",
       "method": "GET",
       "path": "/v1/models",

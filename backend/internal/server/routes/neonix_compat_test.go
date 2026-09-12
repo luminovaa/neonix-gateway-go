@@ -64,9 +64,11 @@ func TestNeonixCompatibilityRoutesAreAdminOnly(t *testing.T) {
 		"/api/accounts/batch-clear-error",
 		"/api/accounts/batch-delete",
 		"/api/accounts/bulk-update",
+		"/api/proxy/resilience",
+		"/api/proxy/resilience/model-locks/clear",
 	} {
 		method := http.MethodPost
-		if path == "/api/mailbox/accounts" || path == "/api/accounts/groups" {
+		if path == "/api/mailbox/accounts" || path == "/api/accounts/groups" || path == "/api/proxy/resilience" {
 			method = http.MethodGet
 		}
 		req := httptest.NewRequest(method, path, nil)

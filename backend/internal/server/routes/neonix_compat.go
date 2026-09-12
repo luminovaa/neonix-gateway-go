@@ -197,4 +197,6 @@ func RegisterNeonixCompatibilityRoutes(
 		}
 		response.Success(c, definition)
 	})
+	api.GET("/proxy/resilience", h.Admin.Account.ResilienceCompat)
+	api.POST("/proxy/resilience/model-locks/clear", h.Admin.Account.ClearModelLocksCompat)
 }
