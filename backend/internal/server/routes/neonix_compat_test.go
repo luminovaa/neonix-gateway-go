@@ -66,9 +66,13 @@ func TestNeonixCompatibilityRoutesAreAdminOnly(t *testing.T) {
 		"/api/accounts/bulk-update",
 		"/api/proxy/resilience",
 		"/api/proxy/resilience/model-locks/clear",
+		"/api/proxy/status",
+		"/api/proxy/stats",
+		"/api/proxy/start",
+		"/api/proxy/stop",
 	} {
 		method := http.MethodPost
-		if path == "/api/mailbox/accounts" || path == "/api/accounts/groups" || path == "/api/proxy/resilience" {
+		if path == "/api/mailbox/accounts" || path == "/api/accounts/groups" || path == "/api/proxy/resilience" || path == "/api/proxy/status" || path == "/api/proxy/stats" {
 			method = http.MethodGet
 		}
 		req := httptest.NewRequest(method, path, nil)

@@ -150,6 +150,34 @@
       "success": {"status": 200, "contentType": "application/json", "sanitized": true}
     },
     {
+      "name": "proxy-status",
+      "method": "GET",
+      "path": "/api/proxy/status",
+      "auth": "operator",
+      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+    },
+    {
+      "name": "proxy-start",
+      "method": "POST",
+      "path": "/api/proxy/start",
+      "auth": "operator",
+      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+    },
+    {
+      "name": "proxy-stop",
+      "method": "POST",
+      "path": "/api/proxy/stop",
+      "auth": "operator",
+      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+    },
+    {
+      "name": "proxy-stats",
+      "method": "GET",
+      "path": "/api/proxy/stats",
+      "auth": "operator",
+      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+    },
+    {
       "name": "models-list",
       "method": "GET",
       "path": "/v1/models",
