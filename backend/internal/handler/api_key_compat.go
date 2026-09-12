@@ -55,7 +55,7 @@ type neonixAPIKeyAccessStats struct {
 	TotalRequests    int64  `json:"totalRequests"`
 	UniqueIPs        int64  `json:"uniqueIPs"`
 	UniqueUserAgents int64  `json:"uniqueUserAgents"`
-	LastAccessed     *int64 `json:"lastAccessed,omitempty"`
+	LastAccessed     *int64 `json:"lastAccessed"`
 }
 
 func apiKeyCompatPrefix(key string) string {
@@ -106,12 +106,24 @@ func (h *APIKeyHandler) ensureDefaultCompatKey(c *gin.Context, userID int64) ([]
 	h.compatMu.Lock()
 	defer h.compatMu.Unlock()
 
+	return h.ensureDefaultCompatKeyLocked(c, userID)
+}
+
+func (h *APIKeyHandler) listCompatKeys(c *gin.Context, userID int64) ([]service.APIKey, error) {
 	keys, _, err := h.apiKeyService.List(c.Request.Context(), userID, pagination.PaginationParams{
 		Page:      1,
 		PageSize:  1000,
 		SortBy:    "created_at",
 		SortOrder: pagination.SortOrderDesc,
 	}, service.APIKeyListFilters{})
+	if err != nil {
+		return nil, err
+	}
+	return keys, nil
+}
+
+func (h *APIKeyHandler) ensureDefaultCompatKeyLocked(c *gin.Context, userID int64) ([]service.APIKey, error) {
+	keys, err := h.listCompatKeys(c, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -210,9 +222,21 @@ func (h *APIKeyHandler) RegenerateCompat(c *gin.Context) {
 	if !ok {
 		return
 	}
-	keys, err := h.ensureDefaultCompatKey(c, subject.UserID)
+	h.compatMu.Lock()
+	defer h.compatMu.Unlock()
+
+	keys, err := h.listCompatKeys(c, subject.UserID)
 	if err != nil {
 		response.ErrorFrom(c, err)
+		return
+	}
+	if len(keys) == 0 {
+		created, err := h.apiKeyService.Create(c.Request.Context(), subject.UserID, service.CreateAPIKeyRequest{Name: "default"})
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		response.Success(c, neonixAPIKeyFromService(created))
 		return
 	}
 	var oldDefault *service.APIKey
@@ -223,15 +247,23 @@ func (h *APIKeyHandler) RegenerateCompat(c *gin.Context) {
 			break
 		}
 	}
+	victim := oldDefault
+	if victim == nil && len(keys) >= 3 {
+		// The legacy route evicted the last key when the per-user limit was
+		// reached. Keep the same bounded cardinality for custom-only installs.
+		copy := keys[len(keys)-1]
+		victim = &copy
+	}
 	created, err := h.apiKeyService.Create(c.Request.Context(), subject.UserID, service.CreateAPIKeyRequest{Name: "default"})
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
-	if oldDefault != nil {
-		if err := h.apiKeyService.Delete(c.Request.Context(), oldDefault.ID, subject.UserID); err != nil {
-			// Keep the new key usable and report the cleanup failure without
-			// returning a secret-bearing partial object.
+	if victim != nil {
+		if err := h.apiKeyService.Delete(c.Request.Context(), victim.ID, subject.UserID); err != nil {
+			// Roll back the replacement where possible. The old key remains
+			// usable if the cleanup operation itself failed.
+			_ = h.apiKeyService.Delete(c.Request.Context(), created.ID, subject.UserID)
 			response.ErrorFrom(c, err)
 			return
 		}
@@ -294,7 +326,7 @@ func (h *APIKeyHandler) GetUsageCompat(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	models, err := h.usageService.GetAPIKeyModelStats(c.Request.Context(), id, time.Time{}, time.Time{})
+	models, err := h.usageService.GetAPIKeyModelStats(c.Request.Context(), id, startTime, endTime)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

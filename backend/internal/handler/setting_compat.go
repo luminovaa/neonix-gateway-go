@@ -48,14 +48,25 @@ func (h *SettingHandler) GetNeonixSettingsCompat(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
+	for _, key := range neonixCompatibilitySettingKeys {
+		if _, ok := values[key]; !ok {
+			values[key] = nil
+		}
+	}
 	// Match the Node defaults while keeping initialization idempotent.
-	if _, ok := values["response_footer_enabled"]; !ok {
+	if value, ok := values["response_footer_enabled"]; !ok || value == nil {
 		values["response_footer_enabled"] = true
-		_ = h.settingService.SetNeonixSetting(c.Request.Context(), "response_footer_enabled", true)
+		if err := h.settingService.SetNeonixSetting(c.Request.Context(), "response_footer_enabled", true); err != nil {
+			response.ErrorWithDetails(c, http.StatusInternalServerError, "Settings defaults could not be saved", "SETTINGS_DEFAULTS_SAVE_FAILED", nil)
+			return
+		}
 	}
 	if value, ok := values["response_footer_text"]; !ok || strings.TrimSpace(valueAsString(value)) == "" {
 		values["response_footer_text"] = "Powered by Neonix"
-		_ = h.settingService.SetNeonixSetting(c.Request.Context(), "response_footer_text", "Powered by Neonix")
+		if err := h.settingService.SetNeonixSetting(c.Request.Context(), "response_footer_text", "Powered by Neonix"); err != nil {
+			response.ErrorWithDetails(c, http.StatusInternalServerError, "Settings defaults could not be saved", "SETTINGS_DEFAULTS_SAVE_FAILED", nil)
+			return
+		}
 	}
 	response.Success(c, values)
 }

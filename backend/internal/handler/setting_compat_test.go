@@ -34,6 +34,16 @@ func (r *compatSettingRepoStub) GetAll(context.Context) (map[string]string, erro
 	return copyValues, nil
 }
 
+func (r *compatSettingRepoStub) GetMultiple(_ context.Context, keys []string) (map[string]string, error) {
+	result := make(map[string]string, len(keys))
+	for _, key := range keys {
+		if value, ok := r.values[key]; ok {
+			result[key] = value
+		}
+	}
+	return result, nil
+}
+
 func (r *compatSettingRepoStub) Set(_ context.Context, key, value string) error {
 	r.values[key] = value
 	return nil
@@ -72,6 +82,9 @@ func TestGetNeonixSettingsCompatDecodesJSONAndInitializesFooterDefaults(t *testi
 	require.Equal(t, true, envelope.Data["autoWarmupEnabled"])
 	require.Equal(t, true, envelope.Data["response_footer_enabled"])
 	require.Equal(t, "Powered by Neonix", envelope.Data["response_footer_text"])
+	_, hasMissing := envelope.Data["globalShortcut"]
+	require.True(t, hasMissing)
+	require.Nil(t, envelope.Data["globalShortcut"])
 	require.Equal(t, `true`, repo.values["response_footer_enabled"])
 	require.Equal(t, `"Powered by Neonix"`, repo.values["response_footer_text"])
 }

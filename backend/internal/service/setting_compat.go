@@ -15,7 +15,15 @@ func (s *SettingService) GetNeonixSettings(ctx context.Context, keys []string) (
 	if s == nil || s.settingRepo == nil {
 		return nil, fmt.Errorf("setting repository is not configured")
 	}
-	raw, err := s.settingRepo.GetAll(ctx)
+	var (
+		raw map[string]string
+		err error
+	)
+	if len(keys) == 0 {
+		raw, err = s.settingRepo.GetAll(ctx)
+	} else {
+		raw, err = s.settingRepo.GetMultiple(ctx, keys)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("get Neonix settings: %w", err)
 	}
