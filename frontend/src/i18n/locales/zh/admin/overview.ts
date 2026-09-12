@@ -1057,18 +1057,6 @@ export default {
         peakMultiplier: '高峰倍率',
         multiplierHint: '作用于 token 计费倍率；token 计费的图片 token 同样适用，0 表示高峰 token 请求按 0 倍计费'
       },
-      profitControl: {
-        enable: '启用利润控制',
-        enabledHint: '调度时仅允许"账号倍率 ≤ 请求实际下游倍率 ×（1 − 最低毛利率 − 安全缓冲）"的账号进入候选池；账号倍率可手工维护或由探测同步，既有排序、粘性与熔断在合格账号间照常工作。图片/视频调度暂不参与。',
-        disabledHint: '关闭后调度不做利润过滤，账号倍率高于下游倍率的账号也会被选中，可能产生亏损请求。',
-        minMargin: '最低毛利率（%）',
-        minMarginHint: '百分比输入，如 30 表示 30%；后端按小数存储',
-        safetyBuffer: '安全缓冲（%）',
-        safetyBufferHint: '与最低毛利率相加后从下游倍率中扣除，默认 0',
-        marginRangeError: '最低毛利率应在 0 到 99.99 之间',
-        bufferRangeError: '安全缓冲应在 0 到 99.99 之间',
-        sumTooHigh: '最低毛利率与安全缓冲之和必须小于 100%，否则将排除全部账号'
-      },
       modelAllowlist: {
         title: '模型白名单',
         hint: '开启后，不在白名单中的模型会被拒绝（404 model_not_found），模型列表接口也只展示白名单内的模型。条目支持精确模型 ID 与末尾 * 通配。注意：Claude Code 会用 haiku 系小模型做标题/摘要等探测，/messages/count_tokens 同样受白名单控制，请一并勾选所需的小模型。',

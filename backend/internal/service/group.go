@@ -461,12 +461,10 @@ func NormalizeProfitControlConfig(platform string, enabled bool, minMargin, safe
 }
 
 func profitControlPlatformSupported(platform string) bool {
-	switch platform {
-	case PlatformOpenAI, PlatformAnthropic, PlatformGemini, PlatformGrok, PlatformAntigravity:
-		return true
-	default:
-		return false
-	}
+	// Neonix is a private single-operator deployment. The inherited resale
+	// margin gate must never restrict which local credential can serve a
+	// request. Legacy fields remain readable during migration for rollback.
+	return false
 }
 
 // GetSearchPricePer1k returns explicit search/tool price per 1k calls if configured.
