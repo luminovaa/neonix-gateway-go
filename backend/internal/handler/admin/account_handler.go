@@ -25,6 +25,7 @@ import (
 	"github.com/luminovaa/neonix-gateway-go/internal/pkg/claude"
 	infraerrors "github.com/luminovaa/neonix-gateway-go/internal/pkg/errors"
 	"github.com/luminovaa/neonix-gateway-go/internal/pkg/geminicli"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/m365"
 	"github.com/luminovaa/neonix-gateway-go/internal/pkg/openai"
 	"github.com/luminovaa/neonix-gateway-go/internal/pkg/response"
 	"github.com/luminovaa/neonix-gateway-go/internal/pkg/timezone"
@@ -55,6 +56,7 @@ type AccountHandler struct {
 	openaiOAuthService      *service.OpenAIOAuthService
 	geminiOAuthService      *service.GeminiOAuthService
 	antigravityOAuthService *service.AntigravityOAuthService
+	m365OAuthService        *service.M365OAuthService
 	grokOAuthService        service.GrokOAuthTokenService
 	rateLimitService        *service.RateLimitService
 	accountUsageService     *service.AccountUsageService
@@ -103,6 +105,7 @@ func NewAccountHandler(
 		openaiOAuthService:      openaiOAuthService,
 		geminiOAuthService:      geminiOAuthService,
 		antigravityOAuthService: antigravityOAuthService,
+		m365OAuthService:        service.NewM365OAuthService(),
 		grokOAuthService:        grokOAuthService,
 		rateLimitService:        rateLimitService,
 		accountUsageService:     accountUsageService,
@@ -1274,6 +1277,123 @@ func (h *AccountHandler) CancelGrokOAuthCompat(c *gin.Context) {
 		var req grokDeviceOAuthCompatRequest
 		if c.ShouldBindJSON(&req) == nil {
 			h.grokDeviceOAuthService.CancelGrokDevice(req.LoginID)
+		}
+	}
+	response.Success(c, gin.H{"ok": true, "cancelled": true})
+}
+
+type m365OAuthCompatRequest struct {
+	LoginID     string `json:"loginId" binding:"required"`
+	CallbackURL string `json:"callbackUrl" binding:"required"`
+}
+
+// StartM365OAuthCompat starts the manual Microsoft PKCE flow used by the
+// Accounts dialog. The callback remains on Microsoft's native-client URI so a
+// remote/Docker operator can copy it from the browser address bar.
+func (h *AccountHandler) StartM365OAuthCompat(c *gin.Context) {
+	if h == nil || h.m365OAuthService == nil {
+		response.InternalError(c, "M365 OAuth is not configured")
+		return
+	}
+	result, err := h.m365OAuthService.Start(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
+// CompleteM365OAuthCompat validates the exact callback origin/state, exchanges
+// the code server-side, and upserts the M365 provider account by oid+tid then
+// email. Existing account metadata and refresh tokens are preserved.
+func (h *AccountHandler) CompleteM365OAuthCompat(c *gin.Context) {
+	if h == nil || h.m365OAuthService == nil || h.adminService == nil {
+		response.InternalError(c, "M365 OAuth is not configured")
+		return
+	}
+	var req m365OAuthCompatRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "invalid M365 OAuth request")
+		return
+	}
+	tokenInfo, err := h.m365OAuthService.Complete(c.Request.Context(), strings.TrimSpace(req.LoginID), strings.TrimSpace(req.CallbackURL))
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	credentials := map[string]any{
+		"access_token": tokenInfo.AccessToken,
+		"oid":          tokenInfo.OID,
+		"tid":          tokenInfo.TID,
+		"client_id":    m365.ClientID,
+		"scope":        m365.Scope,
+		"auth_method":  "pkce",
+		"expires_at":   time.Unix(tokenInfo.ExpiresAt, 0).UTC().Format(time.RFC3339),
+	}
+	if tokenInfo.IDToken != "" {
+		credentials["id_token"] = tokenInfo.IDToken
+	}
+	if tokenInfo.RefreshToken != "" {
+		credentials["refresh_token"] = tokenInfo.RefreshToken
+	}
+	userID := tokenInfo.OID + "@" + tokenInfo.TID
+	accounts, err := h.adminService.ListAccountsForSchedulerScoreFilter(c.Request.Context(), "m365", "", "", "", 0, "")
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	var existing *service.Account
+	for index := range accounts {
+		candidate := &accounts[index]
+		candidateUserID := strings.TrimSpace(candidate.GetCredential("oid")) + "@" + strings.TrimSpace(candidate.GetCredential("tid"))
+		if tokenInfo.OID != "" && tokenInfo.TID != "" && strings.EqualFold(userID, candidateUserID) {
+			existing = candidate
+			break
+		}
+		if existing == nil && tokenInfo.Email != "" && strings.EqualFold(strings.TrimSpace(tokenInfo.Email), strings.TrimSpace(candidate.GetCredential("email"))) {
+			existing = candidate
+			break
+		}
+	}
+	if credentialMapString(credentials, "refresh_token") == "" && existing != nil {
+		if oldRefresh := strings.TrimSpace(existing.GetCredential("refresh_token")); oldRefresh != "" {
+			credentials["refresh_token"] = oldRefresh
+		}
+	}
+	if credentialMapString(credentials, "refresh_token") == "" {
+		response.BadRequest(c, "Microsoft did not return a refresh token; restart login and approve offline access")
+		return
+	}
+	var account *service.Account
+	created := false
+	if existing != nil {
+		account, err = h.adminService.UpdateAccount(c.Request.Context(), existing.ID, &service.UpdateAccountInput{Type: service.AccountTypeOAuth, Credentials: credentials})
+	} else {
+		name := strings.TrimSpace(tokenInfo.Email)
+		if name == "" {
+			name = userID
+		}
+		account, err = h.adminService.CreateAccount(c.Request.Context(), &service.CreateAccountInput{
+			Name: name, Platform: "m365", Type: service.AccountTypeOAuth,
+			Credentials: credentials, Extra: map[string]any{"source_provider": "m365"},
+		})
+		created = true
+	}
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	h.m365OAuthService.Consume(req.LoginID)
+	response.Success(c, gin.H{"status": "complete", "created": created, "account": h.buildAccountResponseWithRuntime(c.Request.Context(), account)})
+}
+
+func (h *AccountHandler) CancelM365OAuthCompat(c *gin.Context) {
+	if h != nil && h.m365OAuthService != nil {
+		var req struct {
+			LoginID string `json:"loginId"`
+		}
+		if c.ShouldBindJSON(&req) == nil {
+			h.m365OAuthService.Cancel(req.LoginID)
 		}
 	}
 	response.Success(c, gin.H{"ok": true, "cancelled": true})

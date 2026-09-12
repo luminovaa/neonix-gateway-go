@@ -66,6 +66,27 @@
       "success": {"status": 200, "contentType": "application/json", "sanitized": true}
     },
     {
+      "name": "m365-oauth-start",
+      "method": "POST",
+      "path": "/api/accounts/m365/oauth/start",
+      "auth": "operator",
+      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+    },
+    {
+      "name": "m365-oauth-complete",
+      "method": "POST",
+      "path": "/api/accounts/m365/oauth/complete",
+      "auth": "operator",
+      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+    },
+    {
+      "name": "m365-oauth-cancel",
+      "method": "POST",
+      "path": "/api/accounts/m365/oauth/cancel",
+      "auth": "operator",
+      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+    },
+    {
       "name": "models-list",
       "method": "GET",
       "path": "/v1/models",
