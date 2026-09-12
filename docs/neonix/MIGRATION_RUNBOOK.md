@@ -29,6 +29,12 @@ aggregates and access fingerprints are read from the Go usage-log store; the
 raw key is returned only to the authenticated operator endpoint that needs it
 for client configuration.
 
+Tray preferences use `/api/settings` in the same compatibility group. Values
+are encoded as JSON in the existing settings table, so booleans, numbers, and
+objects survive a Node/Go rolling cutover. The list endpoint only exposes the
+small Neonix preference allowlist and initializes the response-footer defaults
+idempotently; the typed admin settings surface remains under `/api/v1`.
+
 Antigravity OAuth sessions use the existing Go PKCE service. The callback must
 be the exact `http://localhost:8080/callback` URL returned by `start`; the
 complete endpoint upserts by email and never returns credential values. A

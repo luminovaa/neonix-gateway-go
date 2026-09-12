@@ -191,6 +191,14 @@ func RegisterNeonixCompatibilityRoutes(
 	apiKeys.GET("/:id/usage", h.APIKey.GetUsageCompat)
 	apiKeys.GET("/:id/access-stats", h.APIKey.GetAccessStatsCompat)
 
+	// Electron/tray settings use a flat JSON key/value contract. The full
+	// typed admin settings API remains available under /api/v1/admin/settings.
+	settings := api.Group("/settings")
+	settings.GET("", h.Setting.GetNeonixSettingsCompat)
+	settings.GET("/:key", h.Setting.GetNeonixSettingCompat)
+	settings.PUT("", h.Setting.SetNeonixSettingsCompat)
+	settings.PUT("/:key", h.Setting.SetNeonixSettingCompat)
+
 	api.GET("/mailbox/accounts", h.Admin.Account.ListMailboxAccountsCompat)
 	api.POST("/mailbox/poll", h.Admin.Account.PollMailboxCompat)
 	api.POST("/mailbox/oauth/start", h.Admin.Account.StartMailboxOAuthCompat)

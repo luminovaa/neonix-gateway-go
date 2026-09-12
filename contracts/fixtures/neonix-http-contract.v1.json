@@ -66,6 +66,34 @@
       "success": {"status": 200, "contentType": "application/json", "sanitized": true}
     },
     {
+      "name": "settings-list",
+      "method": "GET",
+      "path": "/api/settings",
+      "auth": "operator",
+      "success": {"status": 200, "contentType": "application/json", "directObject": true}
+    },
+    {
+      "name": "settings-get",
+      "method": "GET",
+      "path": "/api/settings/{key}",
+      "auth": "operator",
+      "success": {"status": 200, "contentType": "application/json", "directObject": true}
+    },
+    {
+      "name": "settings-set",
+      "method": "PUT",
+      "path": "/api/settings/{key}",
+      "auth": "operator",
+      "success": {"status": 200, "contentType": "application/json", "directObject": true}
+    },
+    {
+      "name": "settings-set-many",
+      "method": "PUT",
+      "path": "/api/settings",
+      "auth": "operator",
+      "success": {"status": 200, "contentType": "application/json", "directObject": true}
+    },
+    {
       "name": "codex-oauth-start",
       "method": "POST",
       "path": "/api/accounts/codex/oauth/start",
