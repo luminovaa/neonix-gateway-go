@@ -54,7 +54,8 @@ type accountRepository struct {
 	// credentialCodec decrypts envelopes written by the migration importer. It
 	// remains nil until NEONIX_CREDENTIAL_KEY is configured, preserving the
 	// compatibility column for accounts not yet migrated to envelope storage.
-	credentialCodec *credentials.Envelope
+	credentialCodec    *credentials.Envelope
+	credentialCodecErr error
 }
 
 var schedulerNeutralExtraKeyPrefixes = []string{
@@ -114,7 +115,7 @@ func stripCodexFingerprintSeedFromExtraUpdate(extra map[string]any) map[string]a
 // 这是对外暴露的构造函数，返回接口类型以便于依赖注入。
 func NewAccountRepository(client *dbent.Client, sqlDB *sql.DB, schedulerCache service.SchedulerCache) service.AccountRepository {
 	repo := newAccountRepositoryWithSQL(client, sqlDB, schedulerCache)
-	repo.credentialCodec = credentialEnvelopeFromEnvironment()
+	repo.credentialCodec, repo.credentialCodecErr = credentialEnvelopeFromEnvironment()
 	return repo
 }
 
@@ -122,7 +123,7 @@ func NewAccountRepository(client *dbent.Client, sqlDB *sql.DB, schedulerCache se
 // as an explicit dependency of the admin service.
 func NewAdminAccountRepository(client *dbent.Client, sqlDB *sql.DB, schedulerCache service.SchedulerCache) service.AdminAccountRepository {
 	repo := newAccountRepositoryWithSQL(client, sqlDB, schedulerCache)
-	repo.credentialCodec = credentialEnvelopeFromEnvironment()
+	repo.credentialCodec, repo.credentialCodecErr = credentialEnvelopeFromEnvironment()
 	return repo
 }
 
@@ -133,6 +134,9 @@ func newAccountRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor, schedul
 }
 
 func (r *accountRepository) Create(ctx context.Context, account *service.Account) error {
+	if err := r.credentialEnvelopeConfigError(); err != nil {
+		return err
+	}
 	if r.credentialCodec != nil {
 		if r.client == nil {
 			return errors.New("credential envelope persistence requires an ent client")
@@ -240,6 +244,9 @@ func createAccountRecord(ctx context.Context, client *dbent.Client, account *ser
 // CreateWithAccountGroups atomically persists an account, its exact per-group priorities,
 // and the scheduler outbox event used to publish the new routing snapshot.
 func (r *accountRepository) CreateWithAccountGroups(ctx context.Context, account *service.Account, groups []service.AccountGroup) error {
+	if err := r.credentialEnvelopeConfigError(); err != nil {
+		return err
+	}
 	if account == nil {
 		return service.ErrAccountNilInput
 	}
@@ -321,6 +328,9 @@ func (r *accountRepository) GetByID(ctx context.Context, id int64) (*service.Acc
 }
 
 func (r *accountRepository) GetByIDs(ctx context.Context, ids []int64) ([]*service.Account, error) {
+	if err := r.credentialEnvelopeConfigError(); err != nil {
+		return nil, err
+	}
 	if len(ids) == 0 {
 		return []*service.Account{}, nil
 	}
@@ -522,6 +532,9 @@ func (r *accountRepository) updateAccount(
 	explicitRateSyncEnabled *bool,
 	explicitRateMultiplier *float64,
 ) error {
+	if err := r.credentialEnvelopeConfigError(); err != nil {
+		return err
+	}
 	if account == nil {
 		return nil
 	}
@@ -865,6 +878,9 @@ func decodeAccountExtraJSON(raw []byte) (any, bool, error) {
 }
 
 func (r *accountRepository) UpdateCredentials(ctx context.Context, id int64, credentials map[string]any) error {
+	if err := r.credentialEnvelopeConfigError(); err != nil {
+		return err
+	}
 	payload, err := json.Marshal(normalizeJSONMap(credentials))
 	if err != nil {
 		return err
@@ -3226,6 +3242,9 @@ func (r *accountRepository) queryAccountsByGroup(ctx context.Context, groupID in
 }
 
 func (r *accountRepository) accountsToService(ctx context.Context, accounts []*dbent.Account) ([]service.Account, error) {
+	if err := r.credentialEnvelopeConfigError(); err != nil {
+		return nil, err
+	}
 	if len(accounts) == 0 {
 		return []service.Account{}, nil
 	}
@@ -3944,6 +3963,9 @@ func (r *accountRepository) RevertProxyFallback(ctx context.Context, accountID i
 // ⚠️ 新增影子维度时：须更新此函数（或新增维度专用列举），并检查所有调用点（级联删除/一母一影校验/type 守卫），否则会静默漏掉新维度。
 // 软删除行由 SoftDeleteMixin 拦截器自动排除，无需手写 deleted_at IS NULL。
 func (r *accountRepository) ListShadowsByParent(ctx context.Context, parentID int64) ([]*service.Account, error) {
+	if err := r.credentialEnvelopeConfigError(); err != nil {
+		return nil, err
+	}
 	rows, err := r.client.Account.Query().
 		Where(dbaccount.ParentAccountIDEQ(parentID), dbaccount.QuotaDimensionEQ(dbaccount.QuotaDimensionSpark)).
 		All(ctx)

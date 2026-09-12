@@ -20,23 +20,26 @@ FROM account_credential_envelopes
 WHERE account_id = ANY($1)`
 
 // credentialEnvelopeFromEnvironment loads the key shared by the cutover
-// importer and the Go runtime. An unset or malformed value deliberately
-// returns nil: installations that have not enabled the encrypted handoff
-// continue to use the compatibility credentials column.
-func credentialEnvelopeFromEnvironment() *credentials.Envelope {
+// importer and the Go runtime. An unset value keeps the compatibility column
+// available; a malformed value is returned as an error so the runtime fails
+// closed instead of silently serving a plaintext credential path.
+func credentialEnvelopeFromEnvironment() (*credentials.Envelope, error) {
 	raw := strings.TrimSpace(os.Getenv("NEONIX_CREDENTIAL_KEY"))
+	if raw == "" {
+		return nil, nil
+	}
 	if len(raw) != 64 {
-		return nil
+		return nil, errors.New("credential envelope key must be a 64-character hex value")
 	}
 	key, err := hex.DecodeString(raw)
 	if err != nil {
-		return nil
+		return nil, errors.New("credential envelope key is not valid hex")
 	}
 	codec, err := credentials.New(key)
 	if err != nil {
-		return nil
+		return nil, errors.New("credential envelope key is invalid")
 	}
-	return codec
+	return codec, nil
 }
 
 func loadAccountCredentialEnvelopes(ctx context.Context, exec sqlExecutor, accountIDs []int64) (map[int64]string, error) {
@@ -129,3 +132,10 @@ SET envelope = EXCLUDED.envelope,
 
 // compile-time assertion keeps the helper usable with *sql.DB and *sql.Tx.
 var _ sqlExecutor = (*sql.DB)(nil)
+
+func (r *accountRepository) credentialEnvelopeConfigError() error {
+	if r == nil || r.credentialCodecErr == nil {
+		return nil
+	}
+	return errors.New("credential envelope configuration is invalid")
+}

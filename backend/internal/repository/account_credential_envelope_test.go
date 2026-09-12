@@ -22,6 +22,13 @@ func TestAccountCredentialEnvelopeSealAndOpen(t *testing.T) {
 	require.Equal(t, payload, decoded)
 }
 
+func TestCredentialEnvelopeFromEnvironmentFailsClosedWhenConfiguredKeyIsInvalid(t *testing.T) {
+	t.Setenv("NEONIX_CREDENTIAL_KEY", "not-a-key")
+	codec, err := credentialEnvelopeFromEnvironment()
+	require.Nil(t, codec)
+	require.Error(t, err)
+}
+
 func TestLoadAccountCredentialEnvelopesReadsOnlyRequestedIDs(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
