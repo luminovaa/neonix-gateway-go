@@ -1384,7 +1384,7 @@ func (h *AccountHandler) CompleteM365OAuthCompat(c *gin.Context) {
 		credentials["refresh_token"] = tokenInfo.RefreshToken
 	}
 	userID := tokenInfo.OID + "@" + tokenInfo.TID
-	accounts, err := h.adminService.ListAccountsForSchedulerScoreFilter(c.Request.Context(), "m365", "", "", "", 0, "")
+	accounts, err := h.adminService.ListAccountsForSchedulerScoreFilter(c.Request.Context(), service.PlatformM365, "", "", "", 0, "")
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -1421,8 +1421,8 @@ func (h *AccountHandler) CompleteM365OAuthCompat(c *gin.Context) {
 			name = userID
 		}
 		account, err = h.adminService.CreateAccount(c.Request.Context(), &service.CreateAccountInput{
-			Name: name, Platform: "m365", Type: service.AccountTypeOAuth,
-			Credentials: credentials, Extra: map[string]any{"source_provider": "m365"},
+			Name: name, Platform: service.PlatformM365, Type: service.AccountTypeOAuth,
+			Credentials: credentials, Extra: map[string]any{"source_provider": service.PlatformM365},
 		})
 		created = true
 	}
@@ -1462,14 +1462,14 @@ func (h *AccountHandler) ListMailboxAccountsCompat(c *gin.Context) {
 	}
 	all := make([]service.Account, 0)
 	seen := make(map[int64]struct{})
-	for _, platform := range []string{"outlook", "m365"} {
+	for _, platform := range []string{service.PlatformOutlook, service.PlatformM365} {
 		accounts, err := h.adminService.ListAccountsForSchedulerScoreFilter(c.Request.Context(), platform, "", "", "", 0, "")
 		if err != nil {
 			response.ErrorFrom(c, err)
 			return
 		}
 		for _, account := range accounts {
-			if account.Platform != "outlook" && account.Platform != "m365" {
+			if account.Platform != service.PlatformOutlook && account.Platform != service.PlatformM365 {
 				continue
 			}
 			if _, ok := seen[account.ID]; ok {
@@ -1551,7 +1551,7 @@ func (h *AccountHandler) PollMailboxCompat(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	if account == nil || (account.Platform != "outlook" && account.Platform != "m365") {
+	if account == nil || (account.Platform != service.PlatformOutlook && account.Platform != service.PlatformM365) {
 		mailboxRespondError(c, "MAILBOX_ACCOUNT_NOT_FOUND")
 		return
 	}
@@ -1613,7 +1613,7 @@ func mailboxClientIDForAccount(platform string, credentials map[string]any) stri
 			return strings.TrimSpace(value)
 		}
 	}
-	if platform == "m365" {
+	if platform == service.PlatformM365 {
 		return m365.ClientID
 	}
 	return m365.MailboxClientID
@@ -1676,7 +1676,7 @@ func (h *AccountHandler) CompleteMailboxOAuthCompat(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	accounts, err := h.adminService.ListAccountsForSchedulerScoreFilter(c.Request.Context(), "outlook", "", "", "", 0, "")
+	accounts, err := h.adminService.ListAccountsForSchedulerScoreFilter(c.Request.Context(), service.PlatformOutlook, "", "", "", 0, "")
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -1714,8 +1714,8 @@ func (h *AccountHandler) CompleteMailboxOAuthCompat(c *gin.Context) {
 			name = userID
 		}
 		account, err = h.adminService.CreateAccount(c.Request.Context(), &service.CreateAccountInput{
-			Name: name, Platform: "outlook", Type: service.AccountTypeOAuth,
-			Credentials: credentials, Extra: map[string]any{"source_provider": "outlook", "mailbox": true},
+			Name: name, Platform: service.PlatformOutlook, Type: service.AccountTypeOAuth,
+			Credentials: credentials, Extra: map[string]any{"source_provider": service.PlatformOutlook, "mailbox": true},
 		})
 		created = true
 	}
