@@ -265,4 +265,8 @@ func RegisterNeonixCompatibilityRoutes(
 	api.DELETE("/proxy/logs", logs.clear)
 	api.GET("/proxy/request-logs", logs.list)
 	api.DELETE("/proxy/request-logs", logs.clear)
+	dashboard := &neonixDashboard{db: db}
+	api.GET("/dashboard/me", dashboard.me)
+	api.GET("/dashboard/admin/users", dashboard.adminUsers)
+	api.GET("/dashboard/leaderboard", dashboard.leaderboard)
 }

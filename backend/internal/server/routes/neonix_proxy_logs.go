@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"context"
 	"database/sql"
 	"net/http"
 	"strconv"
@@ -53,26 +54,32 @@ func (s *neonixProxyLogs) list(c *gin.Context) {
 		return
 	}
 	limit, since := parseProxyLogQuery(c)
-	rows, err := s.db.QueryContext(c.Request.Context(), neonixProxyLogsSQL, since, limit)
+	logs, err := s.query(c.Request.Context(), limit, since)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load proxy request logs", "errorCode": "PROXY_LOGS_LOAD_FAILED"})
 		return
+	}
+	c.JSON(http.StatusOK, logs)
+}
+
+func (s *neonixProxyLogs) query(ctx context.Context, limit int, since int64) ([]neonixProxyRequestLog, error) {
+	rows, err := s.db.QueryContext(ctx, neonixProxyLogsSQL, since, limit)
+	if err != nil {
+		return nil, err
 	}
 	defer rows.Close()
 	logs := make([]neonixProxyRequestLog, 0)
 	for rows.Next() {
 		var item neonixProxyRequestLog
 		if err := rows.Scan(&item.ID, &item.Timestamp, &item.Path, &item.Model, &item.AccountID, &item.AccountEmail, &item.AccountNickname, &item.AccountProvider, &item.InputTokens, &item.OutputTokens, &item.CacheReadTokens, &item.CacheWriteTokens, &item.Credits, &item.ResponseTime, &item.TTFT, &item.Status, &item.Success, &item.Error); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load proxy request logs", "errorCode": "PROXY_LOGS_LOAD_FAILED"})
-			return
+			return nil, err
 		}
 		logs = append(logs, item)
 	}
 	if err := rows.Err(); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load proxy request logs", "errorCode": "PROXY_LOGS_LOAD_FAILED"})
-		return
+		return nil, err
 	}
-	c.JSON(http.StatusOK, logs)
+	return logs, nil
 }
 
 // Success and error logs are append-only audit records. Clearing the UI creates
