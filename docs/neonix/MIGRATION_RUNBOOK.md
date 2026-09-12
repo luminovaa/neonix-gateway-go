@@ -17,7 +17,8 @@ The converter preserves provider credential bytes before encryption. Deprecated 
 
 The migration branch exposes the operator-facing `/api` compatibility surface
 behind the admin guard. Account CRUD, provider registry/coverage, readiness,
-and Antigravity OAuth callback-paste login are available there; the middleware
+Codex device login, and Antigravity OAuth callback-paste login are available
+there; the middleware
 unwraps the Go response envelope so the existing Neonix transport can use the
 same direct JSON shape. The canonical Sub2API routes remain under `/api/v1`.
 
@@ -27,9 +28,9 @@ complete endpoint upserts by email and never returns credential values. A
 missing project identifier is persisted with a warning so the account can be
 checked again later.
 
-The compatibility surface is a staged cutover boundary. Codex, Grok, M365,
-remaining provider-specific account adapters, and encrypted runtime credential
-reads still need their own reviewed slices before the Node backend is removed.
+The compatibility surface is a staged cutover boundary. Grok, M365, remaining
+provider-specific account adapters, and full control-plane route parity still
+need their own reviewed slices before the Node backend is removed.
 
 ## Cutover gates
 

@@ -40,6 +40,17 @@ func TestNeonixCompatibilityRoutesAreAdminOnly(t *testing.T) {
 		require.Equal(t, http.StatusForbidden, resp.Code, path)
 		require.Contains(t, resp.Body.String(), `"error"`, path)
 	}
+	for _, path := range []string{
+		"/api/accounts/codex/oauth/start",
+		"/api/accounts/codex/oauth/poll",
+		"/api/accounts/codex/oauth/cancel",
+	} {
+		req := httptest.NewRequest(http.MethodPost, path, nil)
+		resp := httptest.NewRecorder()
+		router.ServeHTTP(resp, req)
+		require.Equal(t, http.StatusForbidden, resp.Code, path)
+		require.Contains(t, resp.Body.String(), `"error"`, path)
+	}
 
 	req := httptest.NewRequest(http.MethodGet, "/api/providers/summary", nil)
 	req.Header.Set("Authorization", "Bearer admin")

@@ -24,6 +24,27 @@
       "success": {"status": 200, "contentType": "application/json", "sanitized": true}
     },
     {
+      "name": "codex-oauth-start",
+      "method": "POST",
+      "path": "/api/accounts/codex/oauth/start",
+      "auth": "operator",
+      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+    },
+    {
+      "name": "codex-oauth-poll",
+      "method": "POST",
+      "path": "/api/accounts/codex/oauth/poll",
+      "auth": "operator",
+      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+    },
+    {
+      "name": "codex-oauth-cancel",
+      "method": "POST",
+      "path": "/api/accounts/codex/oauth/cancel",
+      "auth": "operator",
+      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+    },
+    {
       "name": "models-list",
       "method": "GET",
       "path": "/v1/models",

@@ -988,6 +988,172 @@ type antigravityOAuthCompatRequest struct {
 	CallbackURL string `json:"callbackUrl" binding:"required"`
 }
 
+type codexDeviceOAuthCompatRequest struct {
+	LoginID string `json:"loginId" binding:"required"`
+}
+
+// StartCodexOAuthCompat starts the official Codex device login. The device
+// authorization code and PKCE verifier stay inside the Go service; the UI only
+// receives the verification URL, user code, interval, and expiry.
+func (h *AccountHandler) StartCodexOAuthCompat(c *gin.Context) {
+	if h == nil || h.openaiOAuthService == nil {
+		response.InternalError(c, "Codex OAuth is not configured")
+		return
+	}
+	result, err := h.openaiOAuthService.StartCodexDevice(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
+// PollCodexOAuthCompat performs one device poll and, after approval, persists
+// the token bundle before consuming the in-memory session. This makes a
+// transient database failure retryable without asking the operator to log in
+// again, while never returning a token or auth JSON to the browser.
+func (h *AccountHandler) PollCodexOAuthCompat(c *gin.Context) {
+	if h == nil || h.openaiOAuthService == nil || h.adminService == nil {
+		response.InternalError(c, "Codex OAuth is not configured")
+		return
+	}
+	var req codexDeviceOAuthCompatRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "invalid Codex OAuth request")
+		return
+	}
+	result, err := h.openaiOAuthService.PollCodexDevice(c.Request.Context(), strings.TrimSpace(req.LoginID))
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if result.Pending {
+		response.Success(c, gin.H{
+			"status":     "pending",
+			"retryAfter": result.RetryAfter,
+			"expiresAt":  result.ExpiresAt,
+		})
+		return
+	}
+	if result.TokenInfo == nil {
+		response.InternalError(c, "Codex OAuth did not return token information")
+		return
+	}
+	tokenInfo := result.TokenInfo
+	credentials := h.openaiOAuthService.BuildAccountCredentials(tokenInfo)
+	refreshToken := strings.TrimSpace(tokenInfo.RefreshToken)
+
+	accounts, err := h.adminService.ListAccountsForSchedulerScoreFilter(c.Request.Context(), service.PlatformOpenAI, "", "", "", 0, "")
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	var existing *service.Account
+	for index := range accounts {
+		candidate := &accounts[index]
+		if accountID := strings.TrimSpace(tokenInfo.ChatGPTAccountID); accountID != "" {
+			for _, key := range []string{"chatgpt_account_id", "account_id", "user_id"} {
+				if strings.EqualFold(accountID, strings.TrimSpace(candidate.GetCredential(key))) {
+					existing = candidate
+					break
+				}
+			}
+		}
+		if existing == nil && strings.TrimSpace(tokenInfo.Email) != "" && strings.EqualFold(strings.TrimSpace(tokenInfo.Email), strings.TrimSpace(candidate.GetCredential("email"))) {
+			existing = candidate
+		}
+		if existing != nil {
+			break
+		}
+	}
+	if existing != nil {
+		if refreshToken == "" {
+			refreshToken = strings.TrimSpace(existing.GetCredential("refresh_token"))
+			if refreshToken != "" {
+				credentials["refresh_token"] = refreshToken
+			}
+		}
+	}
+	if refreshToken == "" {
+		response.BadRequest(c, "Codex OAuth did not return a refresh token")
+		return
+	}
+	if authJSON := buildCodexAuthJSON(tokenInfo, refreshToken); authJSON != "" {
+		credentials["auth_json"] = authJSON
+		credentials["authJson"] = authJSON
+	}
+
+	var account *service.Account
+	created := false
+	if existing != nil {
+		account, err = h.adminService.UpdateAccount(c.Request.Context(), existing.ID, &service.UpdateAccountInput{
+			Type:        service.AccountTypeOAuth,
+			Credentials: credentials,
+		})
+	} else {
+		name := strings.TrimSpace(tokenInfo.Email)
+		if name == "" {
+			name = strings.TrimSpace(tokenInfo.ChatGPTAccountID)
+		}
+		if name == "" {
+			name = "Codex account"
+		}
+		account, err = h.adminService.CreateAccount(c.Request.Context(), &service.CreateAccountInput{
+			Name:        name,
+			Platform:    service.PlatformOpenAI,
+			Type:        service.AccountTypeOAuth,
+			Credentials: credentials,
+			Extra:       map[string]any{"source_provider": "codex"},
+		})
+		created = true
+	}
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	h.openaiOAuthService.ConsumeCodexDevice(req.LoginID)
+	h.adminService.ForceOpenAIPrivacy(c.Request.Context(), account)
+	response.Success(c, gin.H{
+		"status":  "complete",
+		"created": created,
+		"account": h.buildAccountResponseWithRuntime(c.Request.Context(), account),
+	})
+}
+
+func buildCodexAuthJSON(tokenInfo *service.OpenAITokenInfo, refreshToken string) string {
+	if tokenInfo == nil || strings.TrimSpace(tokenInfo.AccessToken) == "" {
+		return ""
+	}
+	payload := map[string]any{
+		"auth_mode":      "chatgpt",
+		"OPENAI_API_KEY": nil,
+		"tokens": map[string]any{
+			"id_token":      tokenInfo.IDToken,
+			"access_token":  tokenInfo.AccessToken,
+			"refresh_token": refreshToken,
+			"account_id":    tokenInfo.ChatGPTAccountID,
+		},
+		"last_refresh": time.Now().UTC().Format(time.RFC3339),
+	}
+	encoded, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		return ""
+	}
+	return string(encoded)
+}
+
+// CancelCodexOAuthCompat is idempotent so closing or restarting the dialog
+// cannot leave an authorization session resident in memory.
+func (h *AccountHandler) CancelCodexOAuthCompat(c *gin.Context) {
+	if h != nil && h.openaiOAuthService != nil {
+		var req codexDeviceOAuthCompatRequest
+		if c.ShouldBindJSON(&req) == nil {
+			h.openaiOAuthService.CancelCodexDevice(req.LoginID)
+		}
+	}
+	response.Success(c, gin.H{"ok": true, "cancelled": true})
+}
+
 // StartAntigravityOAuthCompat adapts the existing Go OAuth session to the
 // Neonix callback-paste flow. Secrets stay inside the service and are never
 // included in the start response.
