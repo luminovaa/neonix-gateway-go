@@ -24,6 +24,48 @@
       "success": {"status": 200, "contentType": "application/json", "sanitized": true}
     },
     {
+      "name": "api-keys-list",
+      "method": "GET",
+      "path": "/api/api-keys",
+      "auth": "operator",
+      "success": {"status": 200, "contentType": "application/json", "directArray": true, "sanitized": true}
+    },
+    {
+      "name": "api-key-default",
+      "method": "GET",
+      "path": "/api/api-keys/me",
+      "auth": "operator",
+      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+    },
+    {
+      "name": "api-key-create",
+      "method": "POST",
+      "path": "/api/api-keys",
+      "auth": "operator",
+      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+    },
+    {
+      "name": "api-key-delete",
+      "method": "DELETE",
+      "path": "/api/api-keys/{id}",
+      "auth": "operator",
+      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+    },
+    {
+      "name": "api-key-usage",
+      "method": "GET",
+      "path": "/api/api-keys/{id}/usage",
+      "auth": "operator",
+      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+    },
+    {
+      "name": "api-key-access-stats",
+      "method": "GET",
+      "path": "/api/api-keys/{id}/access-stats",
+      "auth": "operator",
+      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+    },
+    {
       "name": "codex-oauth-start",
       "method": "POST",
       "path": "/api/accounts/codex/oauth/start",

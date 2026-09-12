@@ -14,12 +14,12 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/dgraph-io/ristretto"
 	"github.com/luminovaa/neonix-gateway-go/internal/config"
 	infraerrors "github.com/luminovaa/neonix-gateway-go/internal/pkg/errors"
 	"github.com/luminovaa/neonix-gateway-go/internal/pkg/ip"
 	"github.com/luminovaa/neonix-gateway-go/internal/pkg/pagination"
 	"github.com/luminovaa/neonix-gateway-go/internal/pkg/timezone"
-	"github.com/dgraph-io/ristretto"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -386,7 +386,10 @@ func (s *APIKeyService) GenerateKey() (string, error) {
 	}
 
 	// 转换为十六进制字符串并添加前缀
-	prefix := s.cfg.Default.APIKeyPrefix
+	prefix := ""
+	if s != nil && s.cfg != nil {
+		prefix = s.cfg.Default.APIKeyPrefix
+	}
 	if prefix == "" {
 		prefix = "sk-"
 	}

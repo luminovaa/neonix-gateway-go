@@ -10,6 +10,7 @@ same commit.
 | `/health`, `/ready` | Go | Go-owned | health/readiness tests |
 | `/v1/*` streaming gateway | Go/Sub2API baseline | Go-owned for migrated adapters | streaming, cancellation, pre-first-byte failover |
 | Accounts CRUD/list/IDs/groups | Node compatibility + Go `/api` slice | Go compatibility available | persistence parity and UI smoke test |
+| API keys (`/api/api-keys`) | Node compatibility | Go compatibility slice available | default-key bootstrap, create/delete, usage/access smoke test |
 | Antigravity OAuth/gateway | Node + Go compatibility slice | Go provider slice available | live OAuth and Gemini/Claude request smoke tests |
 | Codex device OAuth | Node + Go compatibility slice | Go provider slice available | device approval, refresh, auth.json import |
 | Grok device OAuth | Node + Go compatibility slice | Go provider slice available | pending/slow-down/denied and refresh smoke tests |
@@ -26,4 +27,3 @@ The Go service must not proxy a request to Node to satisfy an unfinished row.
 During a maintenance cutover, take a PostgreSQL/Redis backup, stop Node only
 after every required row is Go-owned, and restore the previous image and backup
 if any provider smoke test fails.
-

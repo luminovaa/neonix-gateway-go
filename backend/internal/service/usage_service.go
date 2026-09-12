@@ -62,6 +62,16 @@ type UsageService struct {
 	authCacheInvalidator APIKeyAuthCacheInvalidator
 }
 
+// APIKeyAccessStats is the small access footprint shown by the Neonix
+// operator panel. It is deliberately separate from UsageStats so providers
+// can implement it without widening the long-lived UsageLogRepository
+// interface used by existing test doubles and integrations.
+type APIKeyAccessStats struct {
+	TotalRequests    int64 `json:"total_requests"`
+	UniqueIPs        int64 `json:"unique_ips"`
+	UniqueUserAgents int64 `json:"unique_user_agents"`
+}
+
 // NewUsageService 创建使用统计服务实例
 func NewUsageService(usageRepo UsageLogRepository, userRepo UserRepository, entClient *dbent.Client, authCacheInvalidator APIKeyAuthCacheInvalidator) *UsageService {
 	return &UsageService{
@@ -70,6 +80,22 @@ func NewUsageService(usageRepo UsageLogRepository, userRepo UserRepository, entC
 		entClient:            entClient,
 		authCacheInvalidator: authCacheInvalidator,
 	}
+}
+
+// GetAPIKeyAccessStats returns request count and distinct client fingerprints
+// when the concrete repository supports the optional access-stat query. Older
+// repositories return an explicit zero snapshot rather than inventing values.
+func (s *UsageService) GetAPIKeyAccessStats(ctx context.Context, apiKeyID int64) (*APIKeyAccessStats, error) {
+	if s == nil || s.usageRepo == nil {
+		return nil, fmt.Errorf("usage repository is not configured")
+	}
+	reader, ok := s.usageRepo.(interface {
+		GetAPIKeyAccessStats(context.Context, int64) (*APIKeyAccessStats, error)
+	})
+	if !ok {
+		return &APIKeyAccessStats{}, nil
+	}
+	return reader.GetAPIKeyAccessStats(ctx, apiKeyID)
 }
 
 // Create 创建使用日志

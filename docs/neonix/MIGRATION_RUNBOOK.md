@@ -22,6 +22,13 @@ callback-paste login are available there; the middleware
 unwraps the Go response envelope so the existing Neonix transport can use the
 same direct JSON shape. The canonical Sub2API routes remain under `/api/v1`.
 
+The same boundary now exposes `/api/api-keys`. It bootstraps one `default` key
+for the operator when none exists, returns the legacy camelCase array and key
+object shapes, and delegates key mutations to the Go API-key service. Usage
+aggregates and access fingerprints are read from the Go usage-log store; the
+raw key is returned only to the authenticated operator endpoint that needs it
+for client configuration.
+
 Antigravity OAuth sessions use the existing Go PKCE service. The callback must
 be the exact `http://localhost:8080/callback` URL returned by `start`; the
 complete endpoint upserts by email and never returns credential values. A

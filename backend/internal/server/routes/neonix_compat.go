@@ -179,6 +179,18 @@ func RegisterNeonixCompatibilityRoutes(
 	accounts.PATCH("/:id/enabled", h.Admin.Account.UpdateEnabled)
 	accounts.DELETE("/:id", h.Admin.Account.Delete)
 	accounts.POST("/:id/refresh", h.Admin.Account.Refresh)
+
+	// API keys are part of the operator control plane in Neonix. Keep the
+	// existing direct JSON endpoints while the canonical Sub2API handlers stay
+	// available under /api/v1/keys.
+	apiKeys := api.Group("/api-keys")
+	apiKeys.GET("/me", h.APIKey.MeCompat)
+	apiKeys.GET("", h.APIKey.ListCompat)
+	apiKeys.POST("", h.APIKey.CreateCompat)
+	apiKeys.DELETE("/:id", h.APIKey.DeleteCompat)
+	apiKeys.GET("/:id/usage", h.APIKey.GetUsageCompat)
+	apiKeys.GET("/:id/access-stats", h.APIKey.GetAccessStatsCompat)
+
 	api.GET("/mailbox/accounts", h.Admin.Account.ListMailboxAccountsCompat)
 	api.POST("/mailbox/poll", h.Admin.Account.PollMailboxCompat)
 	api.POST("/mailbox/oauth/start", h.Admin.Account.StartMailboxOAuthCompat)

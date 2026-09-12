@@ -198,6 +198,12 @@ func ProvideHandlers(
 	_ *service.IdempotencyCleanupService,
 	_ *service.OpenAIQuotaAutoResetService,
 ) *Handlers {
+	// The direct Neonix API-key compatibility routes reuse the top-level key
+	// handler but read aggregate usage through the already-constructed usage
+	// service. Keep the constructor signature stable for existing Wire/tests.
+	if apiKeyHandler != nil && usageHandler != nil {
+		apiKeyHandler.SetUsageService(usageHandler.usageService)
+	}
 	return &Handlers{
 		Auth:             authHandler,
 		User:             userHandler,

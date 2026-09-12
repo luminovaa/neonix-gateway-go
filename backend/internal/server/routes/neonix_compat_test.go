@@ -33,7 +33,7 @@ func TestNeonixCompatibilityRoutesAreAdminOnly(t *testing.T) {
 		nil,
 	)
 
-	for _, path := range []string{"/api/accounts", "/api/providers/summary"} {
+	for _, path := range []string{"/api/accounts", "/api/providers/summary", "/api/api-keys", "/api/api-keys/me"} {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
 		resp := httptest.NewRecorder()
 		router.ServeHTTP(resp, req)
@@ -70,9 +70,11 @@ func TestNeonixCompatibilityRoutesAreAdminOnly(t *testing.T) {
 		"/api/proxy/stats",
 		"/api/proxy/start",
 		"/api/proxy/stop",
+		"/api/api-keys/1/usage",
+		"/api/api-keys/1/access-stats",
 	} {
 		method := http.MethodPost
-		if path == "/api/mailbox/accounts" || path == "/api/accounts/groups" || path == "/api/proxy/resilience" || path == "/api/proxy/status" || path == "/api/proxy/stats" {
+		if path == "/api/mailbox/accounts" || path == "/api/accounts/groups" || path == "/api/proxy/resilience" || path == "/api/proxy/status" || path == "/api/proxy/stats" || path == "/api/api-keys/1/usage" || path == "/api/api-keys/1/access-stats" {
 			method = http.MethodGet
 		}
 		req := httptest.NewRequest(method, path, nil)
