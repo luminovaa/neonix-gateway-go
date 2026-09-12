@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/luminovaa/neonix-gateway-go/internal/config"
+	"github.com/luminovaa/neonix-gateway-go/internal/filterrule"
 	"github.com/luminovaa/neonix-gateway-go/internal/handler"
 	pkghttputil "github.com/luminovaa/neonix-gateway-go/internal/pkg/httputil"
 	"github.com/luminovaa/neonix-gateway-go/internal/pkg/requestmodel"
@@ -184,6 +185,7 @@ func RegisterGatewayRoutes(
 	// API网关（Claude API兼容）
 	gateway := r.Group("/v1")
 	gateway.Use(bodyLimit)
+	gateway.Use(filterrule.Middleware())
 	gateway.Use(clientRequestID)
 	gateway.Use(opsErrorLogger)
 	gateway.Use(endpointNorm)

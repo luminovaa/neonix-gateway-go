@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/luminovaa/neonix-gateway-go/internal/config"
+	"github.com/luminovaa/neonix-gateway-go/internal/filterrule"
 	"github.com/luminovaa/neonix-gateway-go/internal/handler"
 	"github.com/luminovaa/neonix-gateway-go/internal/pkg/response"
 	"github.com/luminovaa/neonix-gateway-go/internal/provider"
@@ -129,6 +130,9 @@ func RegisterNeonixCompatibilityRoutes(
 		serverConfig = configs[0]
 	}
 	proxyConfigRuntime := newNeonixProxyConfigRuntime(settingService, serverConfig)
+	filtersRuntime := filterrule.New(db)
+	_ = filtersRuntime.Reload()
+	filterrule.SetCurrent(filtersRuntime)
 	// Authentication is a separate boundary from the admin-only control-plane
 	// group below: login/refresh must be reachable before a JWT exists, while
 	// the local operator session endpoints still use the admin guard.
@@ -269,4 +273,10 @@ func RegisterNeonixCompatibilityRoutes(
 	api.GET("/dashboard/me", dashboard.me)
 	api.GET("/dashboard/admin/users", dashboard.adminUsers)
 	api.GET("/dashboard/leaderboard", dashboard.leaderboard)
+	filters := &neonixFilters{db: db, runtime: filtersRuntime}
+	api.GET("/filters", filters.list)
+	api.GET("/filters/:id", filters.get)
+	api.POST("/filters", filters.create)
+	api.PATCH("/filters/:id", filters.update)
+	api.DELETE("/filters/:id", filters.delete)
 }
