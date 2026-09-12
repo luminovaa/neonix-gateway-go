@@ -35,6 +35,10 @@ selected account's email, client ID, refresh token, and bounded filters to the
 Python worker's `/api/mailbox/poll` route. Go rejects overlapping polls per
 mailbox, maps worker failures to stable codes, and strips non-HTTPS result URLs.
 
+The legacy Accounts `check` and `warmup` actions are available as bounded Go
+usage probes. They return the sanitized account snapshot and usage result; a
+provider-specific streaming test remains part of the provider-adapter slices.
+
 The compatibility surface is a staged cutover boundary. Remaining provider-
 specific account adapters and full control-plane route parity still need their
 own reviewed slices before the Node backend is removed.

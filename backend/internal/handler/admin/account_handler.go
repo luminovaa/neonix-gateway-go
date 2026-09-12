@@ -1852,10 +1852,11 @@ func (h *AccountHandler) CompleteAntigravityOAuthCompat(c *gin.Context) {
 			return
 		}
 		response.Success(c, gin.H{
-			"status":  "complete",
-			"created": false,
-			"account": h.buildAccountResponseWithRuntime(c.Request.Context(), updated),
-			"warning": antigravityOAuthWarning(tokenInfo),
+			"status":      "complete",
+			"created":     false,
+			"account":     h.buildAccountResponseWithRuntime(c.Request.Context(), updated),
+			"warning":     antigravityOAuthWarning(tokenInfo),
+			"warningCode": antigravityOAuthWarningCode(tokenInfo),
 		})
 		return
 	}
@@ -1877,16 +1878,24 @@ func (h *AccountHandler) CompleteAntigravityOAuthCompat(c *gin.Context) {
 	}
 	h.adminService.ForceAntigravityPrivacy(c.Request.Context(), created)
 	response.Success(c, gin.H{
-		"status":  "complete",
-		"created": true,
-		"account": h.buildAccountResponseWithRuntime(c.Request.Context(), created),
-		"warning": antigravityOAuthWarning(tokenInfo),
+		"status":      "complete",
+		"created":     true,
+		"account":     h.buildAccountResponseWithRuntime(c.Request.Context(), created),
+		"warning":     antigravityOAuthWarning(tokenInfo),
+		"warningCode": antigravityOAuthWarningCode(tokenInfo),
 	})
 }
 
 func antigravityOAuthWarning(tokenInfo *service.AntigravityTokenInfo) string {
 	if tokenInfo != nil && tokenInfo.ProjectIDMissing {
 		return "Antigravity login succeeded, but project metadata is not available yet"
+	}
+	return ""
+}
+
+func antigravityOAuthWarningCode(tokenInfo *service.AntigravityTokenInfo) string {
+	if tokenInfo != nil && tokenInfo.ProjectIDMissing {
+		return "OAUTH_METADATA_UNAVAILABLE"
 	}
 	return ""
 }
