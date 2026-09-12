@@ -65,6 +65,11 @@ The compatibility surface is a staged cutover boundary. Remaining provider-
 specific account adapters and full control-plane route parity still need their
 own reviewed slices before the Node backend is removed.
 
+The operator auth aliases at `/api/auth/*` accept the Neonix username payload,
+issue the Go JWT, and keep `/api/auth/me` and logout behind the admin guard.
+They exist so the current web client can authenticate during migration; the
+canonical account/password flow remains under `/api/v1/auth`.
+
 ## Cutover gates
 
 - `go test ./...` passes on the exact commit deployed.

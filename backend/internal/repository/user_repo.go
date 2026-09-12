@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lib/pq"
 	dbent "github.com/luminovaa/neonix-gateway-go/ent"
 	"github.com/luminovaa/neonix-gateway-go/ent/apikey"
 	"github.com/luminovaa/neonix-gateway-go/ent/authidentity"
@@ -22,7 +23,6 @@ import (
 	"github.com/luminovaa/neonix-gateway-go/ent/usersubscription"
 	"github.com/luminovaa/neonix-gateway-go/internal/pkg/pagination"
 	"github.com/luminovaa/neonix-gateway-go/internal/service"
-	"github.com/lib/pq"
 
 	entsql "entgo.io/ent/dialect/sql"
 )
@@ -235,6 +235,19 @@ func (r *userRepository) GetByEmail(ctx context.Context, email string) (*service
 		out.AllowedGroups = v
 	}
 	return out, nil
+}
+
+// GetByUsername resolves the local operator name for the Neonix compatibility
+// login route. Usernames are already unique in the Ent schema.
+func (r *userRepository) GetByUsername(ctx context.Context, username string) (*service.User, error) {
+	m, err := r.client.User.Query().Where(dbuser.UsernameEQ(strings.TrimSpace(username))).Only(ctx)
+	if err != nil {
+		if dbent.IsNotFound(err) {
+			return nil, service.ErrUserNotFound
+		}
+		return nil, err
+	}
+	return userEntityToService(m), nil
 }
 
 func (r *userRepository) Update(ctx context.Context, userIn *service.User, fields service.UserUpdateFields) error {

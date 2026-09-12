@@ -17,6 +17,41 @@
       "failure": {"status": 503, "errorCode": "SERVICE_NOT_READY"}
     },
     {
+      "name": "api-health",
+      "method": "GET",
+      "path": "/api/health",
+      "auth": "none",
+      "success": {"status": 200, "contentType": "application/json"}
+    },
+    {
+      "name": "operator-login",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "auth": "none",
+      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+    },
+    {
+      "name": "operator-refresh",
+      "method": "POST",
+      "path": "/api/auth/refresh",
+      "auth": "none",
+      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+    },
+    {
+      "name": "operator-current-user",
+      "method": "GET",
+      "path": "/api/auth/me",
+      "auth": "operator",
+      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+    },
+    {
+      "name": "operator-logout",
+      "method": "POST",
+      "path": "/api/auth/logout",
+      "auth": "operator",
+      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+    },
+    {
       "name": "accounts-list",
       "method": "GET",
       "path": "/api/accounts",

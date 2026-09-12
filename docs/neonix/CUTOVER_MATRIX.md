@@ -8,6 +8,7 @@ same commit.
 | Capability | Current owner | Go status | Cutover gate |
 | --- | --- | --- | --- |
 | `/health`, `/ready` | Go | Go-owned | health/readiness tests |
+| Operator auth aliases (`/api/health`, `/api/auth/*`) | Node compatibility | Go compatibility slice available | login/refresh/current-user smoke test and session-binding checks |
 | `/v1/*` streaming gateway | Go/Sub2API baseline | Go-owned for migrated adapters | streaming, cancellation, pre-first-byte failover |
 | Accounts CRUD/list/IDs/groups | Node compatibility + Go `/api` slice | Go compatibility available | persistence parity and UI smoke test |
 | API keys (`/api/api-keys`) | Node compatibility | Go compatibility slice available | default-key bootstrap, create/delete, usage/access smoke test |

@@ -127,6 +127,19 @@ func RegisterNeonixCompatibilityRoutes(
 		serverConfig = configs[0]
 	}
 	proxyConfigRuntime := newNeonixProxyConfigRuntime(settingService, serverConfig)
+	// Authentication is a separate boundary from the admin-only control-plane
+	// group below: login/refresh must be reachable before a JWT exists, while
+	// the local operator session endpoints still use the admin guard.
+	authAPI := r.Group("/api/auth")
+	authAPI.Use(flattenCompatibilityResponse())
+	authAPI.Use(panelRateLimiter.Global())
+	authAPI.POST("/login", h.Auth.LoginCompat)
+	authAPI.POST("/refresh", h.Auth.RefreshCompat)
+	authPrivate := authAPI.Group("")
+	authPrivate.Use(gin.HandlerFunc(adminAuth))
+	authPrivate.Use(gin.HandlerFunc(auditLog))
+	authPrivate.GET("/me", h.Auth.MeCompat)
+	authPrivate.POST("/logout", h.Auth.LogoutCompat)
 	api := r.Group("/api")
 	// Install first so auth/compliance failures are flattened too; otherwise
 	// an early middleware abort would still leak the Go envelope to the
