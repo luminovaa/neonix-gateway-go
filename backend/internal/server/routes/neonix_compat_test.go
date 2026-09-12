@@ -70,6 +70,7 @@ func TestNeonixCompatibilityRoutesAreAdminOnly(t *testing.T) {
 		"/api/proxy/resilience/model-locks/clear",
 		"/api/proxy/status",
 		"/api/proxy/stats",
+		"/api/proxy/stats/reset",
 		"/api/proxy/config",
 		"/api/proxy/start",
 		"/api/proxy/stop",

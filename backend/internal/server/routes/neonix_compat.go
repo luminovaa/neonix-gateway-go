@@ -257,7 +257,7 @@ func RegisterNeonixCompatibilityRoutes(
 	api.POST("/proxy/stop", func(c *gin.Context) {
 		response.Success(c, gin.H{"ok": true, "running": true})
 	})
-	api.GET("/proxy/stats", func(c *gin.Context) {
-		response.Success(c, gin.H{"requests": 0, "success": 0, "failed": 0, "active": 0})
-	})
+	stats := &neonixProxyStats{db: db}
+	api.GET("/proxy/stats", stats.get)
+	api.POST("/proxy/stats/reset", stats.reset)
 }
