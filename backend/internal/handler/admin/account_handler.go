@@ -57,6 +57,10 @@ type AccountHandler struct {
 	geminiOAuthService      *service.GeminiOAuthService
 	antigravityOAuthService *service.AntigravityOAuthService
 	m365OAuthService        *service.M365OAuthService
+	mailboxOAuthService     *service.MailboxOAuthService
+	mailboxRuntime          *service.PythonMailboxRuntime
+	mailboxPollMu           sync.Mutex
+	mailboxPolls            map[int64]struct{}
 	grokOAuthService        service.GrokOAuthTokenService
 	rateLimitService        *service.RateLimitService
 	accountUsageService     *service.AccountUsageService
@@ -106,6 +110,9 @@ func NewAccountHandler(
 		geminiOAuthService:      geminiOAuthService,
 		antigravityOAuthService: antigravityOAuthService,
 		m365OAuthService:        service.NewM365OAuthService(),
+		mailboxOAuthService:     service.NewMailboxOAuthService(),
+		mailboxRuntime:          service.NewPythonMailboxRuntime(),
+		mailboxPolls:            make(map[int64]struct{}),
 		grokOAuthService:        grokOAuthService,
 		rateLimitService:        rateLimitService,
 		accountUsageService:     accountUsageService,
@@ -1394,6 +1401,299 @@ func (h *AccountHandler) CancelM365OAuthCompat(c *gin.Context) {
 		}
 		if c.ShouldBindJSON(&req) == nil {
 			h.m365OAuthService.Cancel(req.LoginID)
+		}
+	}
+	response.Success(c, gin.H{"ok": true, "cancelled": true})
+}
+
+type mailboxPollCompatRequest struct {
+	AccountID     string `json:"accountId" binding:"required"`
+	TimeoutMs     int    `json:"timeoutMs"`
+	SenderFilter  string `json:"senderFilter"`
+	SubjectFilter string `json:"subjectFilter"`
+}
+
+// ListMailboxAccountsCompat returns only Outlook/M365 accounts that have a
+// configured mailbox refresh token. Credential values never leave the handler.
+func (h *AccountHandler) ListMailboxAccountsCompat(c *gin.Context) {
+	if h == nil || h.adminService == nil {
+		response.InternalError(c, "Mailbox is not configured")
+		return
+	}
+	all := make([]service.Account, 0)
+	seen := make(map[int64]struct{})
+	for _, platform := range []string{"outlook", "m365"} {
+		accounts, err := h.adminService.ListAccountsForSchedulerScoreFilter(c.Request.Context(), platform, "", "", "", 0, "")
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		for _, account := range accounts {
+			if account.Platform != "outlook" && account.Platform != "m365" {
+				continue
+			}
+			if _, ok := seen[account.ID]; ok {
+				continue
+			}
+			seen[account.ID] = struct{}{}
+			all = append(all, account)
+		}
+	}
+	items := make([]gin.H, 0, len(all))
+	for _, account := range all {
+		credentials := account.Credentials
+		if mailboxRefreshTokenForAccount(credentials) == "" {
+			continue
+		}
+		email := strings.TrimSpace(account.GetCredential("email"))
+		if email == "" {
+			email = strings.TrimSpace(account.Name)
+		}
+		if email == "" {
+			continue
+		}
+		lastUsedAt := int64(0)
+		if account.LastUsedAt != nil {
+			lastUsedAt = account.LastUsedAt.UnixMilli()
+		}
+		createdAt := account.CreatedAt.UnixMilli()
+		if createdAt <= 0 {
+			createdAt = time.Now().UnixMilli()
+		}
+		items = append(items, gin.H{
+			"id": strconv.FormatInt(account.ID, 10), "email": email, "provider": account.Platform,
+			"status": account.Status, "hasRefreshToken": true, "createdAt": createdAt,
+			"lastUsedAt": func() any {
+				if lastUsedAt > 0 {
+					return lastUsedAt
+				}
+				return nil
+			}(),
+		})
+	}
+	response.Success(c, gin.H{"accounts": items})
+}
+
+// PollMailboxCompat calls the supported Python worker route. At most one
+// request per mailbox account is active at a time, and worker errors remain
+// distinguishable from a legitimate empty inbox.
+func (h *AccountHandler) PollMailboxCompat(c *gin.Context) {
+	if h == nil || h.adminService == nil || h.mailboxRuntime == nil {
+		mailboxRespondError(c, "MAILBOX_RUNTIME_UNAVAILABLE")
+		return
+	}
+	var req mailboxPollCompatRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		mailboxRespondError(c, "MAILBOX_ACCOUNT_REQUIRED")
+		return
+	}
+	accountID, err := strconv.ParseInt(strings.TrimSpace(req.AccountID), 10, 64)
+	if err != nil || accountID <= 0 {
+		mailboxRespondError(c, "MAILBOX_ACCOUNT_REQUIRED")
+		return
+	}
+	timeout, err := service.ParseMailboxTimeout(req.TimeoutMs)
+	if err != nil {
+		mailboxRespondError(c, "MAILBOX_TIMEOUT_INVALID")
+		return
+	}
+	if !h.claimMailboxPoll(accountID) {
+		mailboxRespondError(c, "MAILBOX_POLL_IN_PROGRESS")
+		return
+	}
+	defer h.releaseMailboxPoll(accountID)
+	account, err := h.adminService.GetAccount(c.Request.Context(), accountID)
+	if err != nil {
+		if errors.Is(err, service.ErrAccountNotFound) {
+			mailboxRespondError(c, "MAILBOX_ACCOUNT_NOT_FOUND")
+			return
+		}
+		response.ErrorFrom(c, err)
+		return
+	}
+	if account == nil || (account.Platform != "outlook" && account.Platform != "m365") {
+		mailboxRespondError(c, "MAILBOX_ACCOUNT_NOT_FOUND")
+		return
+	}
+	email := strings.TrimSpace(account.GetCredential("email"))
+	if email == "" {
+		email = strings.TrimSpace(account.Name)
+	}
+	refreshToken := mailboxRefreshTokenForAccount(account.Credentials)
+	clientID := mailboxClientIDForAccount(account.Platform, account.Credentials)
+	if email == "" || refreshToken == "" || clientID == "" {
+		mailboxRespondError(c, "MAILBOX_CREDENTIAL_INVALID")
+		return
+	}
+	result, err := h.mailboxRuntime.Poll(c.Request.Context(), service.MailboxPollInput{
+		Email: email, ClientID: clientID, RefreshToken: refreshToken, Timeout: timeout,
+		SenderFilter: req.SenderFilter, SubjectFilter: req.SubjectFilter,
+	})
+	if err != nil {
+		mailboxRespondError(c, service.MailboxErrorCode(err))
+		return
+	}
+	if result != nil {
+		result.URL = normalizeMailboxHTTPSURL(result.URL)
+	}
+	response.Success(c, result)
+}
+
+func (h *AccountHandler) claimMailboxPoll(accountID int64) bool {
+	h.mailboxPollMu.Lock()
+	defer h.mailboxPollMu.Unlock()
+	if h.mailboxPolls == nil {
+		h.mailboxPolls = make(map[int64]struct{})
+	}
+	if _, exists := h.mailboxPolls[accountID]; exists {
+		return false
+	}
+	h.mailboxPolls[accountID] = struct{}{}
+	return true
+}
+
+func (h *AccountHandler) releaseMailboxPoll(accountID int64) {
+	h.mailboxPollMu.Lock()
+	delete(h.mailboxPolls, accountID)
+	h.mailboxPollMu.Unlock()
+}
+
+func mailboxRefreshTokenForAccount(credentials map[string]any) string {
+	for _, key := range []string{"mailbox_refresh_token", "mailboxRefreshToken", "refresh_token", "refreshToken"} {
+		if value, ok := credentials[key].(string); ok && strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+
+func mailboxClientIDForAccount(platform string, credentials map[string]any) string {
+	for _, key := range []string{"client_id", "clientId"} {
+		if value, ok := credentials[key].(string); ok && strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	if platform == "m365" {
+		return m365.ClientID
+	}
+	return m365.MailboxClientID
+}
+
+func normalizeMailboxHTTPSURL(raw string) string {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.Fragment != "" {
+		return ""
+	}
+	return parsed.String()
+}
+
+func mailboxRespondError(c *gin.Context, code string) {
+	status := http.StatusBadGateway
+	message := "Mailbox polling failed"
+	switch code {
+	case "MAILBOX_ACCOUNT_REQUIRED", "MAILBOX_TIMEOUT_INVALID", "MAILBOX_CREDENTIAL_INVALID":
+		status, message = http.StatusBadRequest, "Mailbox request is invalid"
+	case "MAILBOX_ACCOUNT_NOT_FOUND":
+		status, message = http.StatusNotFound, "Mailbox account was not found"
+	case "MAILBOX_POLL_IN_PROGRESS":
+		status, message = http.StatusConflict, "Mailbox is already being polled"
+	case "MAILBOX_RUNTIME_UNAVAILABLE":
+		status, message = http.StatusServiceUnavailable, "Mailbox runtime is unavailable"
+	}
+	response.ErrorFrom(c, infraerrors.New(status, code, message))
+}
+
+type mailboxOAuthCompatRequest struct {
+	LoginID     string `json:"loginId" binding:"required"`
+	CallbackURL string `json:"callbackUrl" binding:"required"`
+}
+
+func (h *AccountHandler) StartMailboxOAuthCompat(c *gin.Context) {
+	if h == nil || h.mailboxOAuthService == nil {
+		mailboxRespondError(c, "MAILBOX_OAUTH_UNAVAILABLE")
+		return
+	}
+	result, err := h.mailboxOAuthService.Start(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
+func (h *AccountHandler) CompleteMailboxOAuthCompat(c *gin.Context) {
+	if h == nil || h.mailboxOAuthService == nil || h.adminService == nil {
+		mailboxRespondError(c, "MAILBOX_OAUTH_UNAVAILABLE")
+		return
+	}
+	var req mailboxOAuthCompatRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		mailboxRespondError(c, "MAILBOX_OAUTH_CALLBACK_REQUIRED")
+		return
+	}
+	tokenInfo, err := h.mailboxOAuthService.Complete(c.Request.Context(), req.LoginID, req.CallbackURL)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	accounts, err := h.adminService.ListAccountsForSchedulerScoreFilter(c.Request.Context(), "outlook", "", "", "", 0, "")
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	userID := tokenInfo.OID + "@" + tokenInfo.TID
+	var existing *service.Account
+	for index := range accounts {
+		candidate := &accounts[index]
+		candidateUserID := strings.TrimSpace(candidate.GetCredential("oid")) + "@" + strings.TrimSpace(candidate.GetCredential("tid"))
+		if strings.EqualFold(userID, candidateUserID) || (tokenInfo.Email != "" && strings.EqualFold(tokenInfo.Email, candidate.GetCredential("email"))) {
+			existing = candidate
+			break
+		}
+	}
+	refreshToken := strings.TrimSpace(tokenInfo.RefreshToken)
+	if refreshToken == "" && existing != nil {
+		refreshToken = mailboxRefreshTokenForAccount(existing.Credentials)
+	}
+	if refreshToken == "" {
+		response.ErrorFrom(c, infraerrors.New(http.StatusBadRequest, "MAILBOX_OAUTH_REFRESH_TOKEN_MISSING", "Microsoft did not return a refresh token; restart login and approve offline access"))
+		return
+	}
+	credentials := map[string]any{
+		"refresh_token": refreshToken, "oid": tokenInfo.OID, "tid": tokenInfo.TID,
+		"client_id": m365.MailboxClientID, "scope": m365.MailboxScope, "auth_method": "pkce",
+		"email": tokenInfo.Email,
+	}
+	var account *service.Account
+	created := false
+	if existing != nil {
+		account, err = h.adminService.UpdateAccount(c.Request.Context(), existing.ID, &service.UpdateAccountInput{Type: service.AccountTypeOAuth, Credentials: credentials})
+	} else {
+		name := strings.TrimSpace(tokenInfo.Email)
+		if name == "" {
+			name = userID
+		}
+		account, err = h.adminService.CreateAccount(c.Request.Context(), &service.CreateAccountInput{
+			Name: name, Platform: "outlook", Type: service.AccountTypeOAuth,
+			Credentials: credentials, Extra: map[string]any{"source_provider": "outlook", "mailbox": true},
+		})
+		created = true
+	}
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	h.mailboxOAuthService.Consume(req.LoginID)
+	response.Success(c, gin.H{"status": "complete", "created": created, "account": h.buildAccountResponseWithRuntime(c.Request.Context(), account)})
+}
+
+func (h *AccountHandler) CancelMailboxOAuthCompat(c *gin.Context) {
+	if h != nil && h.mailboxOAuthService != nil {
+		var req struct {
+			LoginID string `json:"loginId"`
+		}
+		if c.ShouldBindJSON(&req) == nil {
+			h.mailboxOAuthService.Cancel(req.LoginID)
 		}
 	}
 	response.Success(c, gin.H{"ok": true, "cancelled": true})

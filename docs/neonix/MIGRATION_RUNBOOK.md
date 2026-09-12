@@ -28,6 +28,13 @@ complete endpoint upserts by email and never returns credential values. A
 missing project identifier is persisted with a warning so the account can be
 checked again later.
 
+Mailbox routes are admin-only and keep Python as the IMAP/browser boundary.
+`/api/mailbox/oauth/*` creates or reconnects an Outlook mailbox account using
+Microsoft PKCE and `IMAP.AccessAsUser.All`; `/api/mailbox/poll` sends only the
+selected account's email, client ID, refresh token, and bounded filters to the
+Python worker's `/api/mailbox/poll` route. Go rejects overlapping polls per
+mailbox, maps worker failures to stable codes, and strips non-HTTPS result URLs.
+
 The compatibility surface is a staged cutover boundary. Remaining provider-
 specific account adapters and full control-plane route parity still need their
 own reviewed slices before the Node backend is removed.

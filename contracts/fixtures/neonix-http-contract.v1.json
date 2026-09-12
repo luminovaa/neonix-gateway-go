@@ -87,6 +87,41 @@
       "success": {"status": 200, "contentType": "application/json", "sanitized": true}
     },
     {
+      "name": "mailbox-accounts",
+      "method": "GET",
+      "path": "/api/mailbox/accounts",
+      "auth": "operator",
+      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+    },
+    {
+      "name": "mailbox-poll",
+      "method": "POST",
+      "path": "/api/mailbox/poll",
+      "auth": "operator",
+      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+    },
+    {
+      "name": "mailbox-oauth-start",
+      "method": "POST",
+      "path": "/api/mailbox/oauth/start",
+      "auth": "operator",
+      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+    },
+    {
+      "name": "mailbox-oauth-complete",
+      "method": "POST",
+      "path": "/api/mailbox/oauth/complete",
+      "auth": "operator",
+      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+    },
+    {
+      "name": "mailbox-oauth-cancel",
+      "method": "POST",
+      "path": "/api/mailbox/oauth/cancel",
+      "auth": "operator",
+      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+    },
+    {
       "name": "models-list",
       "method": "GET",
       "path": "/v1/models",

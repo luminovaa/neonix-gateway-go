@@ -50,8 +50,17 @@ func TestNeonixCompatibilityRoutesAreAdminOnly(t *testing.T) {
 		"/api/accounts/m365/oauth/start",
 		"/api/accounts/m365/oauth/complete",
 		"/api/accounts/m365/oauth/cancel",
+		"/api/mailbox/accounts",
+		"/api/mailbox/poll",
+		"/api/mailbox/oauth/start",
+		"/api/mailbox/oauth/complete",
+		"/api/mailbox/oauth/cancel",
 	} {
-		req := httptest.NewRequest(http.MethodPost, path, nil)
+		method := http.MethodPost
+		if path == "/api/mailbox/accounts" {
+			method = http.MethodGet
+		}
+		req := httptest.NewRequest(method, path, nil)
 		resp := httptest.NewRecorder()
 		router.ServeHTTP(resp, req)
 		require.Equal(t, http.StatusForbidden, resp.Code, path)

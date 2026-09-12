@@ -152,6 +152,11 @@ func RegisterNeonixCompatibilityRoutes(
 	accounts.PATCH("/:id/enabled", h.Admin.Account.UpdateEnabled)
 	accounts.DELETE("/:id", h.Admin.Account.Delete)
 	accounts.POST("/:id/refresh", h.Admin.Account.Refresh)
+	api.GET("/mailbox/accounts", h.Admin.Account.ListMailboxAccountsCompat)
+	api.POST("/mailbox/poll", h.Admin.Account.PollMailboxCompat)
+	api.POST("/mailbox/oauth/start", h.Admin.Account.StartMailboxOAuthCompat)
+	api.POST("/mailbox/oauth/complete", h.Admin.Account.CompleteMailboxOAuthCompat)
+	api.POST("/mailbox/oauth/cancel", h.Admin.Account.CancelMailboxOAuthCompat)
 
 	api.GET("/providers", func(c *gin.Context) {
 		response.Success(c, gin.H{"providers": provider.All()})

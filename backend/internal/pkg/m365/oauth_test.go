@@ -23,6 +23,14 @@ func TestBuildAuthorizationURLUsesPKCEAndMicrosoftCallback(t *testing.T) {
 	require.Contains(t, query.Get("scope"), "offline_access")
 }
 
+func TestBuildMailboxAuthorizationURLUsesReadOnlyIMAPScope(t *testing.T) {
+	parsed, err := url.Parse(BuildMailboxAuthorizationURL("state", "challenge"))
+	require.NoError(t, err)
+	require.Equal(t, MailboxClientID, parsed.Query().Get("client_id"))
+	require.Contains(t, parsed.Query().Get("scope"), "IMAP.AccessAsUser.All")
+	require.Contains(t, parsed.Query().Get("scope"), "offline_access")
+}
+
 func TestParseCallbackValidatesOriginStateAndCode(t *testing.T) {
 	code, err := ParseCallback(RedirectURI+"?code=abc%2B123&state=state-1", "state-1")
 	require.NoError(t, err)

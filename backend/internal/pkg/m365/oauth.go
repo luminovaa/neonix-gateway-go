@@ -15,12 +15,14 @@ import (
 )
 
 const (
-	ClientID     = "c0ab8ce9-e9a0-42e7-b064-33d422df41f1"
-	Authority    = "https://login.microsoftonline.com/common"
-	RedirectURI  = Authority + "/oauth2/nativeclient"
-	AuthorizeURL = Authority + "/oauth2/v2.0/authorize"
-	TokenURL     = Authority + "/oauth2/v2.0/token"
-	Scope        = "openid profile offline_access https://substrate.office.com/sydney/M365Chat.Read https://substrate.office.com/sydney/sydney.readwrite"
+	ClientID        = "c0ab8ce9-e9a0-42e7-b064-33d422df41f1"
+	Authority       = "https://login.microsoftonline.com/common"
+	RedirectURI     = Authority + "/oauth2/nativeclient"
+	AuthorizeURL    = Authority + "/oauth2/v2.0/authorize"
+	TokenURL        = Authority + "/oauth2/v2.0/token"
+	Scope           = "openid profile offline_access https://substrate.office.com/sydney/M365Chat.Read https://substrate.office.com/sydney/sydney.readwrite"
+	MailboxClientID = "d3590ed6-52b3-4102-aeff-aad2292ab01c"
+	MailboxScope    = "openid profile offline_access https://outlook.office.com/IMAP.AccessAsUser.All"
 )
 
 type TokenResponse struct {
@@ -69,12 +71,20 @@ func GenerateSessionID() (string, error) {
 }
 
 func BuildAuthorizationURL(state, challenge string) string {
+	return buildAuthorizationURL(ClientID, Scope, state, challenge)
+}
+
+func BuildMailboxAuthorizationURL(state, challenge string) string {
+	return buildAuthorizationURL(MailboxClientID, MailboxScope, state, challenge)
+}
+
+func buildAuthorizationURL(clientID, scope, state, challenge string) string {
 	values := url.Values{
-		"client_id":             {ClientID},
+		"client_id":             {clientID},
 		"response_type":         {"code"},
 		"redirect_uri":          {RedirectURI},
 		"response_mode":         {"query"},
-		"scope":                 {Scope},
+		"scope":                 {scope},
 		"state":                 {state},
 		"code_challenge":        {challenge},
 		"code_challenge_method": {"S256"},
