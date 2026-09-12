@@ -15,7 +15,7 @@ func TestReadMigrationSourceAcceptsCamelAndSnakeCaseAPIKeys(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, file.Close())
 
-	accounts, keys, usage, access, settings, err := readMigrationSource(file.Name())
+	accounts, keys, usage, access, models, settings, err := readMigrationSource(file.Name())
 	require.NoError(t, err)
 	require.Empty(t, accounts)
 	require.Len(t, keys, 1)
@@ -24,6 +24,7 @@ func TestReadMigrationSourceAcceptsCamelAndSnakeCaseAPIKeys(t *testing.T) {
 	require.Nil(t, settings)
 	require.Nil(t, usage)
 	require.Nil(t, access)
+	require.Nil(t, models)
 }
 
 func TestReadMigrationSourceAcceptsSnakeCaseAPIKeyHistory(t *testing.T) {
@@ -33,7 +34,7 @@ func TestReadMigrationSourceAcceptsSnakeCaseAPIKeyHistory(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, file.Close())
 
-	_, _, usage, access, _, err := readMigrationSource(file.Name())
+	_, _, usage, access, _, _, err := readMigrationSource(file.Name())
 	require.NoError(t, err)
 	require.Len(t, usage, 1)
 	require.Len(t, access, 1)

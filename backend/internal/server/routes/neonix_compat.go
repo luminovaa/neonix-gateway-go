@@ -2,6 +2,7 @@ package routes
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 
@@ -120,6 +121,7 @@ func RegisterNeonixCompatibilityRoutes(
 	auditLog middleware.AuditLogMiddleware,
 	settingService *service.SettingService,
 	panelRateLimiter *middleware.PanelRateLimiter,
+	db *sql.DB,
 	configs ...*config.Config,
 ) {
 	serverConfig := &config.Config{}
@@ -243,6 +245,11 @@ func RegisterNeonixCompatibilityRoutes(
 	api.GET("/proxy/config", proxyConfigRuntime.get)
 	api.PUT("/proxy/config", proxyConfigRuntime.update)
 	api.GET("/proxy/status", proxyConfigRuntime.status)
+	models := &neonixModelCatalog{db: db}
+	api.GET("/proxy/models", models.list)
+	api.POST("/proxy/models", models.create)
+	api.PATCH("/proxy/models/*id", models.update)
+	api.DELETE("/proxy/models/*id", models.delete)
 	api.POST("/proxy/start", func(c *gin.Context) {
 		response.Success(c, gin.H{"ok": true, "running": true})
 	})

@@ -32,9 +32,10 @@ func TestNeonixCompatibilityRoutesAreAdminOnly(t *testing.T) {
 		passthroughAudit,
 		nil,
 		nil,
+		nil,
 	)
 
-	for _, path := range []string{"/api/accounts", "/api/providers/summary", "/api/api-keys", "/api/api-keys/me", "/api/settings"} {
+	for _, path := range []string{"/api/accounts", "/api/providers/summary", "/api/api-keys", "/api/api-keys/me", "/api/settings", "/api/proxy/models"} {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
 		resp := httptest.NewRecorder()
 		router.ServeHTTP(resp, req)
@@ -130,7 +131,7 @@ func TestNeonixProviderDetailUsesCanonicalRegistry(t *testing.T) {
 	RegisterNeonixCompatibilityRoutes(
 		router,
 		&handler.Handlers{Admin: &handler.AdminHandlers{Account: &adminhandler.AccountHandler{}}},
-		adminAuth, passthroughAudit, nil, nil,
+		adminAuth, passthroughAudit, nil, nil, nil,
 	)
 	req := httptest.NewRequest(http.MethodGet, "/api/providers/antigravity", nil)
 	resp := httptest.NewRecorder()
@@ -155,7 +156,7 @@ func TestNeonixAuthCompatibilitySeparatesPublicLoginFromOperatorSession(t *testi
 	RegisterNeonixCompatibilityRoutes(
 		router,
 		&handler.Handlers{Admin: &handler.AdminHandlers{Account: &adminhandler.AccountHandler{}}},
-		adminAuth, passthroughAudit, nil, nil,
+		adminAuth, passthroughAudit, nil, nil, nil,
 	)
 
 	login := httptest.NewRecorder()

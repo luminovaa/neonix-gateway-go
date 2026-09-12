@@ -20,6 +20,7 @@ same commit.
 | Outlook mailbox OAuth/poll | Node + Go compatibility slice, Python IMAP worker | Go control-plane slice available | worker key, single-flight poll, OTP/link sanitization |
 | Credential migration/envelope reads | Node export + Go importer | Go migration slice available | backup/restore, envelope key, provider smoke tests |
 | OpenCode Zen catalogue/warmup | Node catalogue + Go policy | policy only | Go catalogue persistence and sync parity |
+| Proxy model catalog | Node compatibility | Go persistence plus list/create/update/delete compatibility available; sync still Node-owned | catalog export/import reconciliation, provider sync parity, OpenCode retired-model smoke test |
 | Proxy panel/config/resilience | Node + Go compatibility | config/status aliases available; runtime panel still Node-owned | persisted config parity, live lifecycle/stats, URL state and resilience UI smoke test |
 | Register and browser automation orchestration | Node + Python | Node-owned | job lifecycle and worker lease parity |
 | Settings, dashboard, chat, filters, admin pages | Node | Node-owned | web contract and visual regression parity |
