@@ -26,7 +26,7 @@ func TestNeonixCompatibilityRoutesAreAdminOnly(t *testing.T) {
 	passthroughAudit := servermiddleware.AuditLogMiddleware(func(c *gin.Context) { c.Next() })
 	RegisterNeonixCompatibilityRoutes(
 		router,
-		&handler.Handlers{Admin: &handler.AdminHandlers{Account: &adminhandler.AccountHandler{}}},
+		&handler.Handlers{Admin: &handler.AdminHandlers{Account: &adminhandler.AccountHandler{}, Group: adminhandler.NewGroupHandler(nil, nil, nil)}},
 		adminAuth,
 		passthroughAudit,
 		nil,
@@ -41,6 +41,7 @@ func TestNeonixCompatibilityRoutesAreAdminOnly(t *testing.T) {
 		require.Contains(t, resp.Body.String(), `"error"`, path)
 	}
 	for _, path := range []string{
+		"/api/accounts/groups",
 		"/api/accounts/codex/oauth/start",
 		"/api/accounts/codex/oauth/poll",
 		"/api/accounts/codex/oauth/cancel",
@@ -65,7 +66,7 @@ func TestNeonixCompatibilityRoutesAreAdminOnly(t *testing.T) {
 		"/api/accounts/bulk-update",
 	} {
 		method := http.MethodPost
-		if path == "/api/mailbox/accounts" {
+		if path == "/api/mailbox/accounts" || path == "/api/accounts/groups" {
 			method = http.MethodGet
 		}
 		req := httptest.NewRequest(method, path, nil)

@@ -131,6 +131,12 @@ func RegisterNeonixCompatibilityRoutes(
 	api.Use(middleware.AdminComplianceGuard(settingService))
 
 	accounts := api.Group("/accounts")
+	if h != nil && h.Admin != nil && h.Admin.Group != nil {
+		accounts.GET("/groups", h.Admin.Group.GetAll)
+		accounts.POST("/groups", h.Admin.Group.Create)
+		accounts.PUT("/groups/:id", h.Admin.Group.Update)
+		accounts.DELETE("/groups/:id", h.Admin.Group.Delete)
+	}
 	accounts.GET("", h.Admin.Account.ListCompat)
 	accounts.GET("/ids", h.Admin.Account.IDsCompat)
 	accounts.POST("/codex/oauth/start", h.Admin.Account.StartCodexOAuthCompat)
