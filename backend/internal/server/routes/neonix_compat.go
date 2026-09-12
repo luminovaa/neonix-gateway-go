@@ -260,4 +260,9 @@ func RegisterNeonixCompatibilityRoutes(
 	stats := &neonixProxyStats{db: db}
 	api.GET("/proxy/stats", stats.get)
 	api.POST("/proxy/stats/reset", stats.reset)
+	logs := &neonixProxyLogs{db: db}
+	api.GET("/proxy/logs", logs.list)
+	api.DELETE("/proxy/logs", logs.clear)
+	api.GET("/proxy/request-logs", logs.list)
+	api.DELETE("/proxy/request-logs", logs.clear)
 }

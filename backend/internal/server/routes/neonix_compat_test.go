@@ -71,6 +71,8 @@ func TestNeonixCompatibilityRoutesAreAdminOnly(t *testing.T) {
 		"/api/proxy/status",
 		"/api/proxy/stats",
 		"/api/proxy/stats/reset",
+		"/api/proxy/request-logs",
+		"/api/proxy/logs",
 		"/api/proxy/config",
 		"/api/proxy/start",
 		"/api/proxy/stop",
@@ -81,7 +83,7 @@ func TestNeonixCompatibilityRoutesAreAdminOnly(t *testing.T) {
 		"/api/settings/theme",
 	} {
 		method := http.MethodPost
-		if path == "/api/mailbox/accounts" || path == "/api/accounts/groups" || path == "/api/proxy/resilience" || path == "/api/proxy/status" || path == "/api/proxy/stats" || path == "/api/proxy/config" || path == "/api/api-keys/1/usage" || path == "/api/api-keys/1/access-stats" {
+		if path == "/api/mailbox/accounts" || path == "/api/accounts/groups" || path == "/api/proxy/resilience" || path == "/api/proxy/status" || path == "/api/proxy/stats" || path == "/api/proxy/request-logs" || path == "/api/proxy/logs" || path == "/api/proxy/config" || path == "/api/api-keys/1/usage" || path == "/api/api-keys/1/access-stats" {
 			method = http.MethodGet
 		} else if path == "/api/settings/theme" {
 			method = http.MethodPut
