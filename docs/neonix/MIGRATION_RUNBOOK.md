@@ -25,9 +25,11 @@ same direct JSON shape. The canonical Sub2API routes remain under `/api/v1`.
 The same boundary now exposes `/api/api-keys`. It bootstraps one `default` key
 for the operator when none exists, returns the legacy camelCase array and key
 object shapes, and delegates key mutations to the Go API-key service. Usage
-aggregates and access fingerprints are read from the Go usage-log store; the
-raw key is returned only to the authenticated operator endpoint that needs it
-for client configuration.
+aggregates and access fingerprints are read from the Go usage-log store. Usage
+counts distinguish all request rows from billed-success rows, and access
+fingerprints cover the same rolling 24-hour window as the Neonix panel. The raw
+key is returned only to the authenticated operator endpoints that need it for
+client configuration.
 
 Tray preferences use `/api/settings` in the same compatibility group. Values
 are encoded as JSON in the existing settings table, so booleans, numbers, and

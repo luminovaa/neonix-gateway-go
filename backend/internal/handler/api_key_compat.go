@@ -52,9 +52,10 @@ type neonixAPIKeyModelUsage struct {
 }
 
 type neonixAPIKeyAccessStats struct {
-	TotalRequests    int64 `json:"totalRequests"`
-	UniqueIPs        int64 `json:"uniqueIPs"`
-	UniqueUserAgents int64 `json:"uniqueUserAgents"`
+	TotalRequests    int64  `json:"totalRequests"`
+	UniqueIPs        int64  `json:"uniqueIPs"`
+	UniqueUserAgents int64  `json:"uniqueUserAgents"`
+	LastAccessed     *int64 `json:"lastAccessed,omitempty"`
 }
 
 func apiKeyCompatPrefix(key string) string {
@@ -115,6 +116,20 @@ func (h *APIKeyHandler) ensureDefaultCompatKey(c *gin.Context, userID int64) ([]
 		return nil, err
 	}
 	if len(keys) > 0 {
+		for _, key := range keys {
+			if strings.EqualFold(strings.TrimSpace(key.Name), "default") {
+				return keys, nil
+			}
+		}
+		// Match the Node bootstrap behavior for custom-only installations: add
+		// the default key while the per-user key limit still permits it.
+		if len(keys) < 3 {
+			created, err := h.apiKeyService.Create(c.Request.Context(), userID, service.CreateAPIKeyRequest{Name: "default"})
+			if err != nil {
+				return nil, err
+			}
+			keys = append(keys, *created)
+		}
 		return keys, nil
 	}
 	created, err := h.apiKeyService.Create(c.Request.Context(), userID, service.CreateAPIKeyRequest{Name: "default"})
@@ -143,7 +158,7 @@ func (h *APIKeyHandler) ListCompat(c *gin.Context) {
 }
 
 // MeCompat implements GET /api/api-keys/me and returns the default key (or the
-// oldest available key as a compatibility fallback).
+// newest available key as a compatibility fallback).
 func (h *APIKeyHandler) MeCompat(c *gin.Context) {
 	subject, ok := h.compatSubject(c)
 	if !ok {
@@ -183,6 +198,43 @@ func (h *APIKeyHandler) CreateCompat(c *gin.Context) {
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
+	}
+	response.Success(c, neonixAPIKeyFromService(created))
+}
+
+// RegenerateCompat implements POST /api/api-keys/regenerate. A fresh key is
+// created before the previous default is removed so a failed entropy/DB write
+// never strands the operator without a working client credential.
+func (h *APIKeyHandler) RegenerateCompat(c *gin.Context) {
+	subject, ok := h.compatSubject(c)
+	if !ok {
+		return
+	}
+	keys, err := h.ensureDefaultCompatKey(c, subject.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	var oldDefault *service.APIKey
+	for i := range keys {
+		if strings.EqualFold(strings.TrimSpace(keys[i].Name), "default") {
+			copy := keys[i]
+			oldDefault = &copy
+			break
+		}
+	}
+	created, err := h.apiKeyService.Create(c.Request.Context(), subject.UserID, service.CreateAPIKeyRequest{Name: "default"})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if oldDefault != nil {
+		if err := h.apiKeyService.Delete(c.Request.Context(), oldDefault.ID, subject.UserID); err != nil {
+			// Keep the new key usable and report the cleanup failure without
+			// returning a secret-bearing partial object.
+			response.ErrorFrom(c, err)
+			return
+		}
 	}
 	response.Success(c, neonixAPIKeyFromService(created))
 }
@@ -231,7 +283,13 @@ func (h *APIKeyHandler) GetUsageCompat(c *gin.Context) {
 		response.ErrorWithDetails(c, http.StatusServiceUnavailable, "API key usage is unavailable", "API_KEY_USAGE_UNAVAILABLE", nil)
 		return
 	}
-	stats, err := h.usageService.GetStatsByAPIKey(c.Request.Context(), id, time.Time{}, time.Time{})
+	startTime, endTime := neonixAllTimeUsageRange()
+	stats, err := h.usageService.GetStatsByAPIKey(c.Request.Context(), id, startTime, endTime)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	requestStats, err := h.usageService.GetAPIKeyRequestStats(c.Request.Context(), id, startTime, endTime)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -252,11 +310,8 @@ func (h *APIKeyHandler) GetUsageCompat(c *gin.Context) {
 		})
 	}
 	response.Success(c, neonixAPIKeyUsage{
-		TotalRequests: stats.TotalRequests,
-		// The aggregate schema has no success flag. Successful billed rows are
-		// the only rows included by the aggregate query, so this is exact for
-		// the dashboard's success-oriented metric.
-		SuccessRequests: stats.TotalRequests,
+		TotalRequests:   requestStats.TotalRequests,
+		SuccessRequests: requestStats.SuccessRequests,
 		InputTokens:     stats.TotalInputTokens,
 		OutputTokens:    stats.TotalOutputTokens,
 		TotalCredits:    stats.TotalActualCost,
@@ -293,9 +348,19 @@ func (h *APIKeyHandler) GetAccessStatsCompat(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
+	var lastAccessed *int64
+	if stats.LastAccessedAt != nil {
+		value := stats.LastAccessedAt.UnixMilli()
+		lastAccessed = &value
+	}
 	response.Success(c, neonixAPIKeyAccessStats{
 		TotalRequests:    stats.TotalRequests,
 		UniqueIPs:        stats.UniqueIPs,
 		UniqueUserAgents: stats.UniqueUserAgents,
+		LastAccessed:     lastAccessed,
 	})
+}
+
+func neonixAllTimeUsageRange() (time.Time, time.Time) {
+	return time.Unix(0, 0).UTC(), time.Now().UTC().Add(time.Nanosecond)
 }

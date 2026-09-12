@@ -67,9 +67,18 @@ type UsageService struct {
 // can implement it without widening the long-lived UsageLogRepository
 // interface used by existing test doubles and integrations.
 type APIKeyAccessStats struct {
-	TotalRequests    int64 `json:"total_requests"`
-	UniqueIPs        int64 `json:"unique_ips"`
-	UniqueUserAgents int64 `json:"unique_user_agents"`
+	TotalRequests    int64      `json:"total_requests"`
+	UniqueIPs        int64      `json:"unique_ips"`
+	UniqueUserAgents int64      `json:"unique_user_agents"`
+	LastAccessedAt   *time.Time `json:"last_accessed_at,omitempty"`
+}
+
+// APIKeyRequestStats separates all request rows from successfully billed
+// rows. The distinction is needed by the legacy Neonix API-key dashboard,
+// whose success counter is not present in UsageStats.
+type APIKeyRequestStats struct {
+	TotalRequests   int64 `json:"total_requests"`
+	SuccessRequests int64 `json:"success_requests"`
 }
 
 // NewUsageService 创建使用统计服务实例
@@ -89,13 +98,32 @@ func (s *UsageService) GetAPIKeyAccessStats(ctx context.Context, apiKeyID int64)
 	if s == nil || s.usageRepo == nil {
 		return nil, fmt.Errorf("usage repository is not configured")
 	}
-	reader, ok := s.usageRepo.(interface {
+	if reader, ok := s.usageRepo.(interface {
+		GetAPIKeyAccessStatsSince(context.Context, int64, time.Time) (*APIKeyAccessStats, error)
+	}); ok {
+		return reader.GetAPIKeyAccessStatsSince(ctx, apiKeyID, time.Now().UTC().Add(-24*time.Hour))
+	}
+	if reader, ok := s.usageRepo.(interface {
 		GetAPIKeyAccessStats(context.Context, int64) (*APIKeyAccessStats, error)
+	}); ok {
+		return reader.GetAPIKeyAccessStats(ctx, apiKeyID)
+	}
+	return &APIKeyAccessStats{}, nil
+}
+
+// GetAPIKeyRequestStats returns all and successful request counts when the
+// concrete usage repository supports the optional query.
+func (s *UsageService) GetAPIKeyRequestStats(ctx context.Context, apiKeyID int64, startTime, endTime time.Time) (*APIKeyRequestStats, error) {
+	if s == nil || s.usageRepo == nil {
+		return nil, fmt.Errorf("usage repository is not configured")
+	}
+	reader, ok := s.usageRepo.(interface {
+		GetAPIKeyRequestStats(context.Context, int64, time.Time, time.Time) (*APIKeyRequestStats, error)
 	})
 	if !ok {
-		return &APIKeyAccessStats{}, nil
+		return nil, fmt.Errorf("api key request stats are not supported")
 	}
-	return reader.GetAPIKeyAccessStats(ctx, apiKeyID)
+	return reader.GetAPIKeyRequestStats(ctx, apiKeyID, startTime, endTime)
 }
 
 // Create 创建使用日志

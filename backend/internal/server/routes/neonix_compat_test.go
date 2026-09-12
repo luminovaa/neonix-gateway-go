@@ -72,6 +72,7 @@ func TestNeonixCompatibilityRoutesAreAdminOnly(t *testing.T) {
 		"/api/proxy/stop",
 		"/api/api-keys/1/usage",
 		"/api/api-keys/1/access-stats",
+		"/api/api-keys/regenerate",
 		"/api/settings/theme",
 	} {
 		method := http.MethodPost

@@ -187,6 +187,7 @@ func RegisterNeonixCompatibilityRoutes(
 	apiKeys.GET("/me", h.APIKey.MeCompat)
 	apiKeys.GET("", h.APIKey.ListCompat)
 	apiKeys.POST("", h.APIKey.CreateCompat)
+	apiKeys.POST("/regenerate", h.APIKey.RegenerateCompat)
 	apiKeys.DELETE("/:id", h.APIKey.DeleteCompat)
 	apiKeys.GET("/:id/usage", h.APIKey.GetUsageCompat)
 	apiKeys.GET("/:id/access-stats", h.APIKey.GetAccessStatsCompat)

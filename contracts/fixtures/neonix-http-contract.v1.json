@@ -45,6 +45,13 @@
       "success": {"status": 200, "contentType": "application/json", "sanitized": true}
     },
     {
+      "name": "api-key-regenerate",
+      "method": "POST",
+      "path": "/api/api-keys/regenerate",
+      "auth": "operator",
+      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+    },
+    {
       "name": "api-key-delete",
       "method": "DELETE",
       "path": "/api/api-keys/{id}",
