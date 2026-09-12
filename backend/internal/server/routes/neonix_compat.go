@@ -133,6 +133,12 @@ func RegisterNeonixCompatibilityRoutes(
 	filtersRuntime := filterrule.New(db)
 	_ = filtersRuntime.Reload()
 	filterrule.SetCurrent(filtersRuntime)
+	if h != nil && h.Admin != nil && h.Admin.Register != nil {
+		internalRegister := r.Group("/api/register")
+		internalRegister.Use(h.Admin.Register.InternalAuth())
+		internalRegister.POST("/result", h.Admin.Register.ResultCallback)
+		internalRegister.POST("/failure", h.Admin.Register.FailureCallback)
+	}
 	// Authentication is a separate boundary from the admin-only control-plane
 	// group below: login/refresh must be reachable before a JWT exists, while
 	// the local operator session endpoints still use the admin guard.
@@ -225,6 +231,14 @@ func RegisterNeonixCompatibilityRoutes(
 	api.POST("/mailbox/oauth/start", h.Admin.Account.StartMailboxOAuthCompat)
 	api.POST("/mailbox/oauth/complete", h.Admin.Account.CompleteMailboxOAuthCompat)
 	api.POST("/mailbox/oauth/cancel", h.Admin.Account.CancelMailboxOAuthCompat)
+
+	register := api.Group("/register")
+	register.POST("/start", h.Admin.Register.Start)
+	register.POST("/cancel", h.Admin.Register.Cancel)
+	register.GET("/status", h.Admin.Register.Status)
+	register.GET("/logs", h.Admin.Register.Logs)
+	register.GET("/bfs-lockout", h.Admin.Register.BFSLockout)
+	register.GET("/python-status", h.Admin.Register.PythonStatus)
 
 	api.GET("/providers", func(c *gin.Context) {
 		response.Success(c, gin.H{"providers": provider.All()})

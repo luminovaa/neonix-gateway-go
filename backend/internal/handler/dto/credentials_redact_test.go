@@ -3,6 +3,7 @@ package dto
 import (
 	"testing"
 
+	"github.com/luminovaa/neonix-gateway-go/internal/service"
 	"github.com/stretchr/testify/require"
 )
 
@@ -82,14 +83,7 @@ func TestRedactCredentials_DoesNotMutateInput(t *testing.T) {
 }
 
 func TestRedactCredentials_AllKnownSensitiveKeys(t *testing.T) {
-	keys := []string{
-		"access_token", "refresh_token", "id_token",
-		"auth_json", "authJson",
-		"api_key", "session_key", "cookie",
-		"aws_secret_access_key", "aws_session_token",
-		"service_account_json", "service_account", "private_key",
-		"agent_private_key",
-	}
+	keys := service.SensitiveCredentialKeys
 	in := make(map[string]any, len(keys))
 	for _, k := range keys {
 		in[k] = "filled"

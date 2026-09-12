@@ -58,6 +58,12 @@ func TestNeonixCompatibilityRoutesAreAdminOnly(t *testing.T) {
 		"/api/mailbox/oauth/start",
 		"/api/mailbox/oauth/complete",
 		"/api/mailbox/oauth/cancel",
+		"/api/register/start",
+		"/api/register/cancel",
+		"/api/register/status",
+		"/api/register/logs",
+		"/api/register/bfs-lockout",
+		"/api/register/python-status",
 		"/api/accounts/1/check",
 		"/api/accounts/1/warmup",
 		"/api/accounts/1/clear-error",
@@ -86,7 +92,7 @@ func TestNeonixCompatibilityRoutesAreAdminOnly(t *testing.T) {
 		"/api/settings/theme",
 	} {
 		method := http.MethodPost
-		if path == "/api/mailbox/accounts" || path == "/api/accounts/groups" || path == "/api/proxy/resilience" || path == "/api/proxy/status" || path == "/api/proxy/stats" || path == "/api/proxy/request-logs" || path == "/api/proxy/logs" || strings.HasPrefix(path, "/api/dashboard/") || path == "/api/proxy/config" || path == "/api/api-keys/1/usage" || path == "/api/api-keys/1/access-stats" {
+		if path == "/api/mailbox/accounts" || path == "/api/accounts/groups" || path == "/api/proxy/resilience" || path == "/api/proxy/status" || path == "/api/proxy/stats" || path == "/api/proxy/request-logs" || path == "/api/proxy/logs" || strings.HasPrefix(path, "/api/dashboard/") || strings.HasPrefix(path, "/api/register/status") || strings.HasPrefix(path, "/api/register/logs") || strings.HasPrefix(path, "/api/register/bfs-lockout") || strings.HasPrefix(path, "/api/register/python-status") || path == "/api/proxy/config" || path == "/api/api-keys/1/usage" || path == "/api/api-keys/1/access-stats" {
 			method = http.MethodGet
 		} else if path == "/api/settings/theme" {
 			method = http.MethodPut

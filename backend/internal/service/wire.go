@@ -6,13 +6,13 @@ import (
 	"os"
 	"time"
 
+	"github.com/google/wire"
 	dbent "github.com/luminovaa/neonix-gateway-go/ent"
 	"github.com/luminovaa/neonix-gateway-go/internal/config"
 	"github.com/luminovaa/neonix-gateway-go/internal/payment"
 	"github.com/luminovaa/neonix-gateway-go/internal/pkg/antigravity"
 	"github.com/luminovaa/neonix-gateway-go/internal/pkg/logger"
 	"github.com/luminovaa/neonix-gateway-go/internal/pkg/xai"
-	"github.com/google/wire"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 )
@@ -878,6 +878,8 @@ var ProviderSet = wire.NewSet(
 	ProvideAccountTestService,
 	ProvideUpstreamBillingProbeService,
 	ProvideOllamaCloudUsageService,
+	NewPythonRegisterRuntime,
+	NewRegisterPersistence,
 	ProvideSettingService,
 	NewDataManagementService,
 	ProvideBackupService,

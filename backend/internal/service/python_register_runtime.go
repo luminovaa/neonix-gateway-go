@@ -145,7 +145,7 @@ type PythonRegisterJobStatus struct {
 	JobID           string          `json:"job_id"`
 	Status          string          `json:"status"`
 	Logs            []string        `json:"logs,omitempty"`
-	Result          json.RawMessage `json:"result,omitempty"`
+	Result          json.RawMessage `json:"-"`
 	Error           string          `json:"error,omitempty"`
 	BFSBlockedUntil int64           `json:"bfs_blocked_until,omitempty"`
 }
@@ -287,6 +287,9 @@ func (r *PythonRegisterRuntime) doJSON(ctx context.Context, method, path string,
 }
 
 func validRegisterJobID(value string) bool { return registerJobIDPattern.MatchString(value) }
+
+// ValidRegisterJobID validates the identifier accepted by fixed Python worker paths.
+func ValidRegisterJobID(value string) bool { return validRegisterJobID(value) }
 
 func validRegisterJobType(value string) bool {
 	switch value {

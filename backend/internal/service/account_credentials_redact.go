@@ -4,11 +4,11 @@ package service
 // dto 层做响应脱敏、service 层做更新合并都引用此清单——新增凭证类型时务必同步。
 var SensitiveCredentialKeys = []string{
 	// OAuth
-	"access_token", "refresh_token", "id_token", "agent_private_key",
+	"access_token", "refresh_token", "id_token", "client_secret", "agent_private_key",
 	// Codex auth.json is a serialized bundle of the OAuth tokens above.
 	"auth_json", "authJson",
 	// API Key 类
-	"api_key", "session_key", "cookie",
+	"api_key", "token", "session_key", "session_token", "service_token", "ph_token", "cookie", "cookies", "rawCookies",
 	// Grok Web SSO / password (must never persist or echo after Build OAuth)
 	"password", "sso_token", "sso", "sso-rw", "clearTextPassword",
 	// 云服务凭据
