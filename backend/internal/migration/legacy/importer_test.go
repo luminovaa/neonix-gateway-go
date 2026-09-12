@@ -149,3 +149,18 @@ func TestPrepareAccountsRejectsTamperedEnvelopeWithoutDatabaseAccess(t *testing.
 		t.Fatalf("unexpected preflight result: prepared=%+v issues=%+v", prepared, issues)
 	}
 }
+
+func TestImportExtraKeepsProviderSummarySourceIdentity(t *testing.T) {
+	account := NormalizedAccount{ID: "legacy-codex", SourceProvider: "codex", Provider: "openai", Type: "oauth"}
+	extra, err := importExtra(account)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(extra, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if decoded["source_provider"] != "codex" || decoded[legacyProviderKey] != "codex" {
+		t.Fatalf("provider source identity was not preserved: %#v", decoded)
+	}
+}

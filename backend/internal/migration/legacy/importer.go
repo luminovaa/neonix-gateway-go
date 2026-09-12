@@ -232,6 +232,11 @@ func importExtra(account NormalizedAccount) ([]byte, error) {
 		legacyProviderKey:          account.SourceProvider,
 		"neonix_migration_version": legacyMigrationVersion,
 	}
+	if sourceProvider := strings.TrimSpace(account.SourceProvider); sourceProvider != "" {
+		// The compatibility summary and Accounts UI use this stable field while
+		// the legacy-prefixed marker remains the migration lookup identity.
+		extra["source_provider"] = sourceProvider
+	}
 	if account.Email != "" {
 		extra[legacyEmailKey] = strings.TrimSpace(account.Email)
 	}
