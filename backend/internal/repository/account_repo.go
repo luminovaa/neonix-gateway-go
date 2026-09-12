@@ -133,21 +133,33 @@ func newAccountRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor, schedul
 }
 
 func (r *accountRepository) Create(ctx context.Context, account *service.Account) error {
-	if err := createAccountRecord(ctx, r.client, account); err != nil {
-		return err
-	}
 	if r.credentialCodec != nil {
+		if r.client == nil {
+			return errors.New("credential envelope persistence requires an ent client")
+		}
+		tx, err := r.client.Tx(ctx)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = tx.Rollback() }()
+		txClient := tx.Client()
+		if err := createAccountRecord(ctx, txClient, account); err != nil {
+			return err
+		}
 		envelope, err := sealAccountCredentials(r.credentialCodec, account.Credentials)
 		if err != nil {
 			return err
 		}
-		exec := r.sql
-		if exec == nil {
-			exec = r.client
-		}
-		if err := persistAccountCredentialEnvelope(ctx, exec, account.ID, envelope); err != nil {
+		if err := persistAccountCredentialEnvelope(ctx, txClient, account.ID, envelope); err != nil {
 			return err
 		}
+		if err := enqueueSchedulerOutbox(ctx, txClient, service.SchedulerOutboxEventAccountChanged, &account.ID, nil, buildSchedulerGroupPayload(account.GroupIDs)); err != nil {
+			return err
+		}
+		return tx.Commit()
+	}
+	if err := createAccountRecord(ctx, r.client, account); err != nil {
+		return err
 	}
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &account.ID, nil, buildSchedulerGroupPayload(account.GroupIDs)); err != nil {
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue account create failed: account=%d err=%v", account.ID, err)
