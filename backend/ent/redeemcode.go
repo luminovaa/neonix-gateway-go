@@ -9,9 +9,9 @@ import (
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
-	"github.com/Wei-Shaw/sub2api/ent/group"
-	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
-	"github.com/Wei-Shaw/sub2api/ent/user"
+	"github.com/luminovaa/neonix-gateway-go/ent/group"
+	"github.com/luminovaa/neonix-gateway-go/ent/redeemcode"
+	"github.com/luminovaa/neonix-gateway-go/ent/user"
 )
 
 // RedeemCode is the model entity for the RedeemCode schema.

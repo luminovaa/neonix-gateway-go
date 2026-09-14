@@ -6,9 +6,9 @@ import (
 	"errors"
 	"strings"
 
-	dbent "github.com/Wei-Shaw/sub2api/ent"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	dbent "github.com/luminovaa/neonix-gateway-go/ent"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/logger"
+	"github.com/luminovaa/neonix-gateway-go/internal/service"
 )
 
 type usageBillingRepository struct {

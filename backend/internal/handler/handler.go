@@ -1,8 +1,8 @@
 package handler
 
 import (
-	"github.com/Wei-Shaw/sub2api/internal/handler/admin"
-	"github.com/Wei-Shaw/sub2api/internal/securityaudit"
+	"github.com/luminovaa/neonix-gateway-go/internal/handler/admin"
+	"github.com/luminovaa/neonix-gateway-go/internal/securityaudit"
 )
 
 // AdminHandlers contains all admin-related HTTP handlers

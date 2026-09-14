@@ -1,10 +1,10 @@
 package handler
 
 import (
-	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/handler/admin"
-	"github.com/Wei-Shaw/sub2api/internal/securityaudit"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/luminovaa/neonix-gateway-go/internal/config"
+	"github.com/luminovaa/neonix-gateway-go/internal/handler/admin"
+	"github.com/luminovaa/neonix-gateway-go/internal/securityaudit"
+	"github.com/luminovaa/neonix-gateway-go/internal/service"
 
 	"github.com/google/wire"
 )
@@ -198,6 +198,12 @@ func ProvideHandlers(
 	_ *service.IdempotencyCleanupService,
 	_ *service.OpenAIQuotaAutoResetService,
 ) *Handlers {
+	// The direct Neonix API-key compatibility routes reuse the top-level key
+	// handler but read aggregate usage through the already-constructed usage
+	// service. Keep the constructor signature stable for existing Wire/tests.
+	if apiKeyHandler != nil && usageHandler != nil {
+		apiKeyHandler.SetUsageService(usageHandler.usageService)
+	}
 	return &Handlers{
 		Auth:             authHandler,
 		User:             userHandler,

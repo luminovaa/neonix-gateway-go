@@ -14,13 +14,13 @@ import (
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
-	dbent "github.com/Wei-Shaw/sub2api/ent"
-	"github.com/Wei-Shaw/sub2api/ent/authidentity"
-	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
-	"github.com/Wei-Shaw/sub2api/ent/identityadoptiondecision"
-	dbpredicate "github.com/Wei-Shaw/sub2api/ent/predicate"
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	dbent "github.com/luminovaa/neonix-gateway-go/ent"
+	"github.com/luminovaa/neonix-gateway-go/ent/authidentity"
+	"github.com/luminovaa/neonix-gateway-go/ent/authidentitychannel"
+	"github.com/luminovaa/neonix-gateway-go/ent/identityadoptiondecision"
+	dbpredicate "github.com/luminovaa/neonix-gateway-go/ent/predicate"
+	infraerrors "github.com/luminovaa/neonix-gateway-go/internal/pkg/errors"
+	"github.com/luminovaa/neonix-gateway-go/internal/service"
 )
 
 var (

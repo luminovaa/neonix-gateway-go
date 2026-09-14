@@ -14,12 +14,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/dgraph-io/ristretto"
+	"github.com/luminovaa/neonix-gateway-go/internal/config"
+	infraerrors "github.com/luminovaa/neonix-gateway-go/internal/pkg/errors"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/ip"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/pagination"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/timezone"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -386,7 +386,10 @@ func (s *APIKeyService) GenerateKey() (string, error) {
 	}
 
 	// 转换为十六进制字符串并添加前缀
-	prefix := s.cfg.Default.APIKeyPrefix
+	prefix := ""
+	if s != nil && s.cfg != nil {
+		prefix = s.cfg.Default.APIKeyPrefix
+	}
 	if prefix == "" {
 		prefix = "sk-"
 	}
@@ -698,6 +701,40 @@ func (s *APIKeyService) GetByID(ctx context.Context, id int64) (*APIKey, error) 
 		apiKey.CurrentConcurrency = s.currentConcurrencyForAPIKey(ctx, apiKey.ID)
 	}
 	return apiKey, nil
+}
+
+// GetByCompatID resolves either a native numeric API-key id or a legacy
+// Neonix text id recorded by the migration mapping table. Ownership is checked
+// here so every compatibility handler gets the same authorization behavior.
+func (s *APIKeyService) GetByCompatID(ctx context.Context, userID int64, rawID string) (*APIKey, error) {
+	rawID = strings.TrimSpace(rawID)
+	if rawID == "" {
+		return nil, ErrAPIKeyNotFound
+	}
+	if id, err := strconv.ParseInt(rawID, 10, 64); err == nil && id > 0 {
+		key, err := s.GetByID(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		if key.UserID != userID {
+			return nil, ErrAPIKeyNotFound
+		}
+		return key, nil
+	}
+	reader, ok := s.apiKeyRepo.(interface {
+		GetByLegacyID(context.Context, string) (*APIKey, error)
+	})
+	if !ok {
+		return nil, ErrAPIKeyNotFound
+	}
+	key, err := reader.GetByLegacyID(ctx, rawID)
+	if err != nil {
+		return nil, err
+	}
+	if key == nil || key.UserID != userID {
+		return nil, ErrAPIKeyNotFound
+	}
+	return key, nil
 }
 
 // GetByKey 根据Key字符串获取API Key（用于认证）

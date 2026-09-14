@@ -3,8 +3,8 @@ package testutil
 import (
 	"testing"
 
-	"github.com/Wei-Shaw/sub2api/internal/repository"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/luminovaa/neonix-gateway-go/internal/repository"
+	"github.com/luminovaa/neonix-gateway-go/internal/service"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
 )

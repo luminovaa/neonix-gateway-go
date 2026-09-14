@@ -360,9 +360,9 @@ func TestNormalizeRunMode(t *testing.T) {
 	}{
 		{"simple", "simple"},
 		{"SIMPLE", "simple"},
-		{"standard", "standard"},
-		{"invalid", "standard"},
-		{"", "standard"},
+		{"standard", "simple"},
+		{"invalid", "simple"},
+		{"", "simple"},
 	}
 
 	for _, tt := range tests {

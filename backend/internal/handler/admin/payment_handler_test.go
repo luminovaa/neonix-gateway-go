@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	dbent "github.com/Wei-Shaw/sub2api/ent"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	dbent "github.com/luminovaa/neonix-gateway-go/ent"
+	"github.com/luminovaa/neonix-gateway-go/internal/service"
 )
 
 func TestSanitizeAdminPaymentOrderForResponseAddsCurrency(t *testing.T) {

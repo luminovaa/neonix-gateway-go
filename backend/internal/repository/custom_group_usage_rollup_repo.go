@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/usagestats"
+	"github.com/luminovaa/neonix-gateway-go/internal/service"
 )
 
 func (r *usageLogRepository) getAllGroupUsageSummaryFromRollups(ctx context.Context, todayStart time.Time) (results []usagestats.GroupUsageSummary, err error) {

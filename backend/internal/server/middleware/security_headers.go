@@ -7,7 +7,7 @@ import (
 	"log"
 	"strings"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/luminovaa/neonix-gateway-go/internal/config"
 	"github.com/gin-gonic/gin"
 )
 

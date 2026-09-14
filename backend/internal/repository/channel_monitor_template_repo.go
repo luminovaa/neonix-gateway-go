@@ -6,10 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 
-	dbent "github.com/Wei-Shaw/sub2api/ent"
-	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
-	"github.com/Wei-Shaw/sub2api/ent/channelmonitorrequesttemplate"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	dbent "github.com/luminovaa/neonix-gateway-go/ent"
+	"github.com/luminovaa/neonix-gateway-go/ent/channelmonitor"
+	"github.com/luminovaa/neonix-gateway-go/ent/channelmonitorrequesttemplate"
+	"github.com/luminovaa/neonix-gateway-go/internal/service"
 	"github.com/lib/pq"
 )
 

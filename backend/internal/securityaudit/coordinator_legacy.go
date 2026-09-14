@@ -3,7 +3,7 @@ package securityaudit
 import (
 	"context"
 
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/luminovaa/neonix-gateway-go/internal/service"
 )
 
 type LegacyModerationAdapter struct {

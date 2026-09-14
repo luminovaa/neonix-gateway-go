@@ -9,20 +9,20 @@ import (
 	"strings"
 	"time"
 
-	dbent "github.com/Wei-Shaw/sub2api/ent"
-	"github.com/Wei-Shaw/sub2api/ent/apikey"
-	"github.com/Wei-Shaw/sub2api/ent/authidentity"
-	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
-	dbgroup "github.com/Wei-Shaw/sub2api/ent/group"
-	"github.com/Wei-Shaw/sub2api/ent/identityadoptiondecision"
-	"github.com/Wei-Shaw/sub2api/ent/predicate"
-	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
-	dbuser "github.com/Wei-Shaw/sub2api/ent/user"
-	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
-	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
-	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/lib/pq"
+	dbent "github.com/luminovaa/neonix-gateway-go/ent"
+	"github.com/luminovaa/neonix-gateway-go/ent/apikey"
+	"github.com/luminovaa/neonix-gateway-go/ent/authidentity"
+	"github.com/luminovaa/neonix-gateway-go/ent/authidentitychannel"
+	dbgroup "github.com/luminovaa/neonix-gateway-go/ent/group"
+	"github.com/luminovaa/neonix-gateway-go/ent/identityadoptiondecision"
+	"github.com/luminovaa/neonix-gateway-go/ent/predicate"
+	"github.com/luminovaa/neonix-gateway-go/ent/schema/mixins"
+	dbuser "github.com/luminovaa/neonix-gateway-go/ent/user"
+	"github.com/luminovaa/neonix-gateway-go/ent/userallowedgroup"
+	"github.com/luminovaa/neonix-gateway-go/ent/usersubscription"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/pagination"
+	"github.com/luminovaa/neonix-gateway-go/internal/service"
 
 	entsql "entgo.io/ent/dialect/sql"
 )
@@ -235,6 +235,19 @@ func (r *userRepository) GetByEmail(ctx context.Context, email string) (*service
 		out.AllowedGroups = v
 	}
 	return out, nil
+}
+
+// GetByUsername resolves the local operator name for the Neonix compatibility
+// login route. Usernames are already unique in the Ent schema.
+func (r *userRepository) GetByUsername(ctx context.Context, username string) (*service.User, error) {
+	m, err := r.client.User.Query().Where(dbuser.UsernameEQ(strings.TrimSpace(username))).Only(ctx)
+	if err != nil {
+		if dbent.IsNotFound(err) {
+			return nil, service.ErrUserNotFound
+		}
+		return nil, err
+	}
+	return userEntityToService(m), nil
 }
 
 func (r *userRepository) Update(ctx context.Context, userIn *service.User, fields service.UserUpdateFields) error {

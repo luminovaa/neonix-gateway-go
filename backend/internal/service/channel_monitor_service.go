@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/luminovaa/neonix-gateway-go/internal/domain"
 	"golang.org/x/sync/errgroup"
 )
 

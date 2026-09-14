@@ -9,11 +9,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
-	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/lib/pq"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/logger"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/timezone"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/usagestats"
+	"github.com/luminovaa/neonix-gateway-go/internal/service"
 )
 
 // GetUserStatsAggregated returns aggregated usage statistics for a user using database-level aggregation
@@ -59,17 +59,32 @@ func (r *usageLogRepository) GetUserStatsAggregated(ctx context.Context, userID 
 func (r *usageLogRepository) GetAPIKeyStatsAggregated(ctx context.Context, apiKeyID int64, startTime, endTime time.Time) (*usagestats.UsageStats, error) {
 	query := `
 		SELECT
-			COUNT(*) as total_requests,
-			COALESCE(SUM(input_tokens), 0) as total_input_tokens,
-			COALESCE(SUM(output_tokens), 0) as total_output_tokens,
-			COALESCE(SUM(cache_creation_tokens + cache_read_tokens), 0) as total_cache_tokens,
-			COALESCE(SUM(cache_creation_tokens), 0) as total_cache_creation_tokens,
-			COALESCE(SUM(cache_read_tokens), 0) as total_cache_read_tokens,
-			COALESCE(SUM(total_cost), 0) as total_cost,
-			COALESCE(SUM(actual_cost), 0) as total_actual_cost,
-			COALESCE(AVG(COALESCE(duration_ms, 0)), 0) as avg_duration_ms
-		FROM usage_logs
-		WHERE api_key_id = $1 AND created_at >= $2 AND created_at < $3
+			COALESCE(SUM(total_requests), 0),
+			COALESCE(SUM(input_tokens), 0),
+			COALESCE(SUM(output_tokens), 0),
+			COALESCE(SUM(cache_tokens), 0),
+			COALESCE(SUM(cache_creation_tokens), 0),
+			COALESCE(SUM(cache_read_tokens), 0),
+			COALESCE(SUM(total_cost), 0),
+			COALESCE(SUM(actual_cost), 0),
+			COALESCE(SUM(duration_sum) / NULLIF(SUM(duration_count), 0), 0)
+		FROM (
+			SELECT COUNT(*) AS total_requests,
+			       COALESCE(SUM(input_tokens), 0) AS input_tokens,
+			       COALESCE(SUM(output_tokens), 0) AS output_tokens,
+			       COALESCE(SUM(cache_creation_tokens + cache_read_tokens), 0) AS cache_tokens,
+			       COALESCE(SUM(cache_creation_tokens), 0) AS cache_creation_tokens,
+			       COALESCE(SUM(cache_read_tokens), 0) AS cache_read_tokens,
+			       COALESCE(SUM(total_cost), 0) AS total_cost,
+			       COALESCE(SUM(actual_cost), 0) AS actual_cost,
+			       COALESCE(SUM(COALESCE(duration_ms, 0)), 0) AS duration_sum, COUNT(*) AS duration_count
+			FROM usage_logs WHERE api_key_id = $1 AND created_at >= $2 AND created_at < $3
+			UNION ALL
+			SELECT COUNT(*), COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0),
+			       0, 0, 0, COALESCE(SUM(credits), 0), COALESCE(SUM(credits), 0), 0, 0
+			FROM neonix_legacy_api_key_usage
+			WHERE api_key_id = $1 AND occurred_at >= $2 AND occurred_at < $3
+		) usage_rows
 	`
 
 	var stats usagestats.UsageStats

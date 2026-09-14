@@ -690,7 +690,7 @@ func TestConstants_值正确(t *testing.T) {
 	if secret != "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" {
 		t.Errorf("默认 client_secret 不匹配: got %s", secret)
 	}
-	if RedirectURI != "http://localhost:8085/callback" {
+	if RedirectURI != "http://localhost:8080/callback" {
 		t.Errorf("RedirectURI 不匹配: got %s", RedirectURI)
 	}
 	if GetUserAgent() != "antigravity/2.9.1 windows/amd64" {

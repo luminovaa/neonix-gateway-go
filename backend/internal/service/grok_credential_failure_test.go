@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
+	infraerrors "github.com/luminovaa/neonix-gateway-go/internal/pkg/errors"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/xai"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )

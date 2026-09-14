@@ -1763,9 +1763,9 @@ func NormalizeRunMode(value string) string {
 	normalized := strings.ToLower(strings.TrimSpace(value))
 	switch normalized {
 	case RunModeStandard, RunModeSimple:
-		return normalized
+		return RunModeSimple
 	default:
-		return RunModeStandard
+		return RunModeSimple
 	}
 }
 
@@ -1987,7 +1987,7 @@ func configureConfigSource(setConfigFile, addConfigPath func(string)) {
 }
 
 func setDefaults() {
-	viper.SetDefault("run_mode", RunModeStandard)
+	viper.SetDefault("run_mode", RunModeSimple)
 
 	// Server
 	viper.SetDefault("server.host", "0.0.0.0")

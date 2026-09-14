@@ -3,9 +3,9 @@ package service
 import (
 	"testing"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/domain"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
+	"github.com/luminovaa/neonix-gateway-go/internal/config"
+	"github.com/luminovaa/neonix-gateway-go/internal/domain"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/claude"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

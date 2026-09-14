@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/httputil"
+	"github.com/luminovaa/neonix-gateway-go/internal/service"
 
 	"github.com/gin-gonic/gin"
 )

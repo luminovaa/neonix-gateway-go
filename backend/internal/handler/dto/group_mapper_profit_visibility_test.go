@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/luminovaa/neonix-gateway-go/internal/service"
 )
 
 // profitControlJSONFields 是分组利润控制的三个 JSON 字段。它们与同响应中的

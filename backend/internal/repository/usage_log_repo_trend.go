@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/usagestats"
 )
 
 // TrendDataPoint represents a single point in trend data

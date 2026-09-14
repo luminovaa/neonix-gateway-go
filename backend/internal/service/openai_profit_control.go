@@ -67,8 +67,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/ctxkey"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/timezone"
 )
 
 const (

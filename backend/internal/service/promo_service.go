@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	dbent "github.com/Wei-Shaw/sub2api/ent"
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	dbent "github.com/luminovaa/neonix-gateway-go/ent"
+	infraerrors "github.com/luminovaa/neonix-gateway-go/internal/pkg/errors"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/pagination"
 )
 
 var (

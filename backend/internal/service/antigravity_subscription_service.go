@@ -3,7 +3,7 @@ package service
 import (
 	"strings"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/antigravity"
 )
 
 const antigravitySubscriptionAbnormal = "abnormal"

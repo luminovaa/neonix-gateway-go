@@ -5,12 +5,13 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/handler"
-	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/requestmodel"
-	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/luminovaa/neonix-gateway-go/internal/config"
+	"github.com/luminovaa/neonix-gateway-go/internal/filterrule"
+	"github.com/luminovaa/neonix-gateway-go/internal/handler"
+	pkghttputil "github.com/luminovaa/neonix-gateway-go/internal/pkg/httputil"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/requestmodel"
+	"github.com/luminovaa/neonix-gateway-go/internal/server/middleware"
+	"github.com/luminovaa/neonix-gateway-go/internal/service"
 
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
@@ -184,6 +185,7 @@ func RegisterGatewayRoutes(
 	// API网关（Claude API兼容）
 	gateway := r.Group("/v1")
 	gateway.Use(bodyLimit)
+	gateway.Use(filterrule.Middleware())
 	gateway.Use(clientRequestID)
 	gateway.Use(opsErrorLogger)
 	gateway.Use(endpointNorm)

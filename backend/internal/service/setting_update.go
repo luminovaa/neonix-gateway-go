@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/luminovaa/neonix-gateway-go/internal/config"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/antigravity"
+	infraerrors "github.com/luminovaa/neonix-gateway-go/internal/pkg/errors"
 )
 
 // OmittedSettingKeys marks setting keys the caller's payload never carried.

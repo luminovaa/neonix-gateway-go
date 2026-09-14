@@ -3,7 +3,7 @@ package service
 import (
 	"fmt"
 
-	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/luminovaa/neonix-gateway-go/internal/domain"
 )
 
 // Status constants
@@ -43,6 +43,11 @@ const (
 	PlatformGemini      = domain.PlatformGemini
 	PlatformAntigravity = domain.PlatformAntigravity
 	PlatformGrok        = domain.PlatformGrok
+	// M365 and Outlook are control-plane identity/mailbox providers. They are
+	// stored explicitly so account and mailbox routes do not rely on ad-hoc
+	// string literals; they are not currently model gateway platforms.
+	PlatformM365    = "m365"
+	PlatformOutlook = "outlook"
 	// 国产 OpenAI 兼容供应商（与 grok 一样经 OpenAI 网关转发）。
 	PlatformKimi      = domain.PlatformKimi
 	PlatformZhipu     = domain.PlatformZhipu

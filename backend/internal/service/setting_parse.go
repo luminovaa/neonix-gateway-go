@@ -11,11 +11,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
+	"github.com/luminovaa/neonix-gateway-go/internal/config"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/antigravity"
+	infraerrors "github.com/luminovaa/neonix-gateway-go/internal/pkg/errors"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/openai"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/xai"
 )
 
 // InitializeDefaultSettings 初始化默认设置

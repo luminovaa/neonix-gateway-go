@@ -6,10 +6,11 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
+	infraerrors "github.com/luminovaa/neonix-gateway-go/internal/pkg/errors"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/openai"
 )
 
 // OpenAIOAuthService handles OpenAI OAuth authentication flows
@@ -18,14 +19,22 @@ type OpenAIOAuthService struct {
 	proxyRepo            ProxyRepository
 	oauthClient          OpenAIOAuthClient
 	privacyClientFactory PrivacyClientFactory // 用于调用 chatgpt.com/backend-api（ImpersonateChrome）
+	// codexDeviceSessions are separate from the browser callback sessions above:
+	// the official Codex device flow returns an authorization code by polling
+	// OpenAI and must never expose that code to the browser.
+	codexDeviceMu       sync.Mutex
+	codexDeviceSessions map[string]*codexDeviceSession
+	codexDeviceClient   *http.Client
 }
 
 // NewOpenAIOAuthService creates a new OpenAI OAuth service
 func NewOpenAIOAuthService(proxyRepo ProxyRepository, oauthClient OpenAIOAuthClient) *OpenAIOAuthService {
 	return &OpenAIOAuthService{
-		sessionStore: openai.NewSessionStore(),
-		proxyRepo:    proxyRepo,
-		oauthClient:  oauthClient,
+		sessionStore:        openai.NewSessionStore(),
+		proxyRepo:           proxyRepo,
+		oauthClient:         oauthClient,
+		codexDeviceSessions: make(map[string]*codexDeviceSession),
+		codexDeviceClient:   &http.Client{Timeout: 20 * time.Second},
 	}
 }
 
@@ -441,6 +450,9 @@ func (s *OpenAIOAuthService) BuildAccountCredentials(tokenInfo *OpenAITokenInfo)
 // Stop stops the session store cleanup goroutine
 func (s *OpenAIOAuthService) Stop() {
 	s.sessionStore.Stop()
+	s.codexDeviceMu.Lock()
+	s.codexDeviceSessions = make(map[string]*codexDeviceSession)
+	s.codexDeviceMu.Unlock()
 }
 
 func normalizeOpenAIOAuthPlatform(platform string) string {

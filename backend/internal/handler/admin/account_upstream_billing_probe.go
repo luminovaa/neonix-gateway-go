@@ -3,8 +3,8 @@ package admin
 import (
 	"strconv"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/response"
+	"github.com/luminovaa/neonix-gateway-go/internal/service"
 	"github.com/gin-gonic/gin"
 )
 

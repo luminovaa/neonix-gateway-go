@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	ippkg "github.com/Wei-Shaw/sub2api/internal/pkg/ip"
+	ippkg "github.com/luminovaa/neonix-gateway-go/internal/pkg/ip"
 
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"

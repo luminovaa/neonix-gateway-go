@@ -15,20 +15,22 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
 
-	dbent "github.com/Wei-Shaw/sub2api/ent"
-	dbaccount "github.com/Wei-Shaw/sub2api/ent/account"
-	dbaccountgroup "github.com/Wei-Shaw/sub2api/ent/accountgroup"
-	dbgroup "github.com/Wei-Shaw/sub2api/ent/group"
-	dbpredicate "github.com/Wei-Shaw/sub2api/ent/predicate"
-	dbproxy "github.com/Wei-Shaw/sub2api/ent/proxy"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
-	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/lib/pq"
+	dbent "github.com/luminovaa/neonix-gateway-go/ent"
+	dbaccount "github.com/luminovaa/neonix-gateway-go/ent/account"
+	dbaccountgroup "github.com/luminovaa/neonix-gateway-go/ent/accountgroup"
+	dbgroup "github.com/luminovaa/neonix-gateway-go/ent/group"
+	dbpredicate "github.com/luminovaa/neonix-gateway-go/ent/predicate"
+	dbproxy "github.com/luminovaa/neonix-gateway-go/ent/proxy"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/logger"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/pagination"
+	"github.com/luminovaa/neonix-gateway-go/internal/security/credentials"
+	"github.com/luminovaa/neonix-gateway-go/internal/service"
 
 	entsql "entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqljson"
@@ -49,6 +51,11 @@ type accountRepository struct {
 	// Used to proactively sync account snapshot to cache when status changes,
 	// ensuring sticky sessions can promptly detect unavailable accounts.
 	schedulerCache service.SchedulerCache
+	// credentialCodec decrypts envelopes written by the migration importer. It
+	// remains nil until NEONIX_CREDENTIAL_KEY is configured, preserving the
+	// compatibility column for accounts not yet migrated to envelope storage.
+	credentialCodec    *credentials.Envelope
+	credentialCodecErr error
 }
 
 var schedulerNeutralExtraKeyPrefixes = []string{
@@ -107,13 +114,17 @@ func stripCodexFingerprintSeedFromExtraUpdate(extra map[string]any) map[string]a
 // NewAccountRepository 创建账户仓储实例。
 // 这是对外暴露的构造函数，返回接口类型以便于依赖注入。
 func NewAccountRepository(client *dbent.Client, sqlDB *sql.DB, schedulerCache service.SchedulerCache) service.AccountRepository {
-	return newAccountRepositoryWithSQL(client, sqlDB, schedulerCache)
+	repo := newAccountRepositoryWithSQL(client, sqlDB, schedulerCache)
+	repo.credentialCodec, repo.credentialCodecErr = credentialEnvelopeFromEnvironment()
+	return repo
 }
 
 // NewAdminAccountRepository exposes the account repository's atomic duplication capability
 // as an explicit dependency of the admin service.
 func NewAdminAccountRepository(client *dbent.Client, sqlDB *sql.DB, schedulerCache service.SchedulerCache) service.AdminAccountRepository {
-	return newAccountRepositoryWithSQL(client, sqlDB, schedulerCache)
+	repo := newAccountRepositoryWithSQL(client, sqlDB, schedulerCache)
+	repo.credentialCodec, repo.credentialCodecErr = credentialEnvelopeFromEnvironment()
+	return repo
 }
 
 // newAccountRepositoryWithSQL 是内部构造函数，支持依赖注入 SQL 执行器。
@@ -123,6 +134,34 @@ func newAccountRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor, schedul
 }
 
 func (r *accountRepository) Create(ctx context.Context, account *service.Account) error {
+	if err := r.credentialEnvelopeConfigError(); err != nil {
+		return err
+	}
+	if r.credentialCodec != nil {
+		if r.client == nil {
+			return errors.New("credential envelope persistence requires an ent client")
+		}
+		tx, err := r.client.Tx(ctx)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = tx.Rollback() }()
+		txClient := tx.Client()
+		if err := createAccountRecord(ctx, txClient, account); err != nil {
+			return err
+		}
+		envelope, err := sealAccountCredentials(r.credentialCodec, account.Credentials)
+		if err != nil {
+			return err
+		}
+		if err := persistAccountCredentialEnvelope(ctx, txClient, account.ID, envelope); err != nil {
+			return err
+		}
+		if err := enqueueSchedulerOutbox(ctx, txClient, service.SchedulerOutboxEventAccountChanged, &account.ID, nil, buildSchedulerGroupPayload(account.GroupIDs)); err != nil {
+			return err
+		}
+		return tx.Commit()
+	}
 	if err := createAccountRecord(ctx, r.client, account); err != nil {
 		return err
 	}
@@ -205,6 +244,9 @@ func createAccountRecord(ctx context.Context, client *dbent.Client, account *ser
 // CreateWithAccountGroups atomically persists an account, its exact per-group priorities,
 // and the scheduler outbox event used to publish the new routing snapshot.
 func (r *accountRepository) CreateWithAccountGroups(ctx context.Context, account *service.Account, groups []service.AccountGroup) error {
+	if err := r.credentialEnvelopeConfigError(); err != nil {
+		return err
+	}
 	if account == nil {
 		return service.ErrAccountNilInput
 	}
@@ -231,6 +273,15 @@ func (r *accountRepository) CreateWithAccountGroups(ctx context.Context, account
 
 	if err := createAccountRecord(ctx, txClient, account); err != nil {
 		return err
+	}
+	if r.credentialCodec != nil {
+		envelope, err := sealAccountCredentials(r.credentialCodec, account.Credentials)
+		if err != nil {
+			return err
+		}
+		if err := persistAccountCredentialEnvelope(ctx, txClient, account.ID, envelope); err != nil {
+			return err
+		}
 	}
 	if len(groups) > 0 {
 		builders := make([]*dbent.AccountGroupCreate, 0, len(groups))
@@ -277,6 +328,9 @@ func (r *accountRepository) GetByID(ctx context.Context, id int64) (*service.Acc
 }
 
 func (r *accountRepository) GetByIDs(ctx context.Context, ids []int64) ([]*service.Account, error) {
+	if err := r.credentialEnvelopeConfigError(); err != nil {
+		return nil, err
+	}
 	if len(ids) == 0 {
 		return []*service.Account{}, nil
 	}
@@ -321,12 +375,30 @@ func (r *accountRepository) GetByIDs(ctx context.Context, ids []int64) ([]*servi
 	if err != nil {
 		return nil, err
 	}
+	credentialEnvelopes := map[int64]string{}
+	if r.credentialCodec != nil {
+		exec := r.sql
+		if exec == nil {
+			exec = r.client
+		}
+		credentialEnvelopes, err = loadAccountCredentialEnvelopes(ctx, exec, accountIDs)
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	outByID := make(map[int64]*service.Account, len(entAccounts))
 	for _, entAcc := range entAccounts {
 		out := accountEntityToService(entAcc)
 		if out == nil {
 			continue
+		}
+		if envelope, ok := credentialEnvelopes[entAcc.ID]; ok {
+			decrypted, err := openAccountCredentialEnvelope(r.credentialCodec, envelope)
+			if err != nil {
+				return nil, fmt.Errorf("account credential envelope %d is invalid", entAcc.ID)
+			}
+			out.Credentials = decrypted
 		}
 
 		// Prefer the preloaded proxy edge when available.
@@ -460,6 +532,9 @@ func (r *accountRepository) updateAccount(
 	explicitRateSyncEnabled *bool,
 	explicitRateMultiplier *float64,
 ) error {
+	if err := r.credentialEnvelopeConfigError(); err != nil {
+		return err
+	}
 	if account == nil {
 		return nil
 	}
@@ -606,7 +681,20 @@ func (r *accountRepository) updateLockedAccount(
 	builder.SetQuotaDimension(dbaccount.QuotaDimension(account.QuotaDimensionOrDefault()))
 	builder.SetNillableParentAccountID(account.ParentAccountID)
 
-	return builder.Save(ctx)
+	updated, err := builder.Save(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if r.credentialCodec != nil {
+		envelope, err := sealAccountCredentials(r.credentialCodec, account.Credentials)
+		if err != nil {
+			return nil, err
+		}
+		if err := persistAccountCredentialEnvelope(ctx, client, account.ID, envelope); err != nil {
+			return nil, err
+		}
+	}
+	return updated, nil
 }
 
 func lockAndMergeAccountProbeExtra(
@@ -790,6 +878,9 @@ func decodeAccountExtraJSON(raw []byte) (any, bool, error) {
 }
 
 func (r *accountRepository) UpdateCredentials(ctx context.Context, id int64, credentials map[string]any) error {
+	if err := r.credentialEnvelopeConfigError(); err != nil {
+		return err
+	}
 	payload, err := json.Marshal(normalizeJSONMap(credentials))
 	if err != nil {
 		return err
@@ -853,6 +944,15 @@ func (r *accountRepository) UpdateCredentials(ctx context.Context, id int64, cre
 	}
 	if affected == 0 {
 		return service.ErrAccountNotFound
+	}
+	if r.credentialCodec != nil {
+		envelope, err := sealAccountCredentials(r.credentialCodec, credentials)
+		if err != nil {
+			return err
+		}
+		if err := persistAccountCredentialEnvelope(ctx, client, id, envelope); err != nil {
+			return err
+		}
 	}
 	if err := enqueueSchedulerOutbox(ctx, client, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
 		return err
@@ -1498,6 +1598,9 @@ func (r *accountRepository) UpdateGrokOAuthCredentialsIfUnchanged(
 	expectedProxyID *int64,
 	credentials map[string]any,
 ) (bool, error) {
+	if err := r.credentialEnvelopeConfigError(); err != nil {
+		return false, err
+	}
 	if r == nil || r.sql == nil {
 		return false, errors.New("account repository SQL executor is not configured")
 	}
@@ -1542,6 +1645,15 @@ func (r *accountRepository) UpdateGrokOAuthCredentialsIfUnchanged(
 	}
 	if rowsAffected == 0 {
 		return false, nil
+	}
+	if r.credentialCodec != nil {
+		envelope, err := sealAccountCredentials(r.credentialCodec, credentials)
+		if err != nil {
+			return false, err
+		}
+		if err := persistAccountCredentialEnvelope(ctx, r.sql, id, envelope); err != nil {
+			return false, err
+		}
 	}
 	r.syncSchedulerAccountSnapshotDetached(ctx, id)
 	return true, nil
@@ -2852,6 +2964,9 @@ func ollamaCloudUsageSnapshotClearRequested(extra map[string]any) bool {
 }
 
 func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates service.AccountBulkUpdate) (int64, error) {
+	if err := r.credentialEnvelopeConfigError(); err != nil {
+		return 0, err
+	}
 	if len(ids) == 0 {
 		return 0, nil
 	}
@@ -3044,6 +3159,11 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 			return 0, service.ErrUpstreamBillingProbeAccountInvalid
 		}
 	}
+	if r.credentialCodec != nil && len(updates.Credentials) > 0 && rows > 0 {
+		if err := syncAccountCredentialEnvelopes(ctx, exec, r.credentialCodec, ids); err != nil {
+			return 0, err
+		}
+	}
 	if rows > 0 {
 		payload := map[string]any{"account_ids": ids}
 		if err := enqueueSchedulerOutbox(ctx, exec, service.SchedulerOutboxEventAccountBulkChanged, nil, nil, payload); err != nil {
@@ -3142,6 +3262,9 @@ func (r *accountRepository) queryAccountsByGroup(ctx context.Context, groupID in
 }
 
 func (r *accountRepository) accountsToService(ctx context.Context, accounts []*dbent.Account) ([]service.Account, error) {
+	if err := r.credentialEnvelopeConfigError(); err != nil {
+		return nil, err
+	}
 	if len(accounts) == 0 {
 		return []service.Account{}, nil
 	}
@@ -3166,12 +3289,30 @@ func (r *accountRepository) accountsToService(ctx context.Context, accounts []*d
 	if err != nil {
 		return nil, err
 	}
+	credentialEnvelopes := map[int64]string{}
+	if r.credentialCodec != nil {
+		exec := r.sql
+		if exec == nil {
+			exec = r.client
+		}
+		credentialEnvelopes, err = loadAccountCredentialEnvelopes(ctx, exec, accountIDs)
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	outAccounts := make([]service.Account, 0, len(accounts))
 	for _, acc := range accounts {
 		out := accountEntityToService(acc)
 		if out == nil {
 			continue
+		}
+		if envelope, ok := credentialEnvelopes[acc.ID]; ok {
+			decrypted, err := openAccountCredentialEnvelope(r.credentialCodec, envelope)
+			if err != nil {
+				return nil, fmt.Errorf("account credential envelope %d is invalid", acc.ID)
+			}
+			out.Credentials = decrypted
 		}
 		if acc.ProxyID != nil {
 			if proxy, ok := proxyMap[*acc.ProxyID]; ok {
@@ -3842,6 +3983,9 @@ func (r *accountRepository) RevertProxyFallback(ctx context.Context, accountID i
 // ⚠️ 新增影子维度时：须更新此函数（或新增维度专用列举），并检查所有调用点（级联删除/一母一影校验/type 守卫），否则会静默漏掉新维度。
 // 软删除行由 SoftDeleteMixin 拦截器自动排除，无需手写 deleted_at IS NULL。
 func (r *accountRepository) ListShadowsByParent(ctx context.Context, parentID int64) ([]*service.Account, error) {
+	if err := r.credentialEnvelopeConfigError(); err != nil {
+		return nil, err
+	}
 	rows, err := r.client.Account.Query().
 		Where(dbaccount.ParentAccountIDEQ(parentID), dbaccount.QuotaDimensionEQ(dbaccount.QuotaDimensionSpark)).
 		All(ctx)

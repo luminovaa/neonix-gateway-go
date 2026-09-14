@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/apicompat"
 )
 
 // normalizeOpenAIResponsesLegacyIngress accepts the Chat Completions-shaped

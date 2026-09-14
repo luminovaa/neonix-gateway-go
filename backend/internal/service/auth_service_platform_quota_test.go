@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	dbent "github.com/Wei-Shaw/sub2api/ent"
+	dbent "github.com/luminovaa/neonix-gateway-go/ent"
 )
 
 // fakeInsertRecorder 记录 BulkInsertInitial 调用，实现 UserPlatformQuotaRepository port。

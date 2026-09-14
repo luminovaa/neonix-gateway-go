@@ -13,8 +13,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
-	"github.com/Wei-Shaw/sub2api/internal/util/logredact"
+	infraerrors "github.com/luminovaa/neonix-gateway-go/internal/pkg/errors"
+	"github.com/luminovaa/neonix-gateway-go/internal/util/logredact"
 )
 
 const (

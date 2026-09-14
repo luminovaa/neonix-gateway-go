@@ -10,10 +10,10 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
-	"github.com/Wei-Shaw/sub2api/ent/group"
-	"github.com/Wei-Shaw/sub2api/ent/predicate"
-	"github.com/Wei-Shaw/sub2api/ent/user"
-	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
+	"github.com/luminovaa/neonix-gateway-go/ent/group"
+	"github.com/luminovaa/neonix-gateway-go/ent/predicate"
+	"github.com/luminovaa/neonix-gateway-go/ent/user"
+	"github.com/luminovaa/neonix-gateway-go/ent/userallowedgroup"
 )
 
 // UserAllowedGroupUpdate is the builder for updating UserAllowedGroup entities.

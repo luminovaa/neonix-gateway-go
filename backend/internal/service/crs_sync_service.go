@@ -14,9 +14,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
-	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
+	"github.com/luminovaa/neonix-gateway-go/internal/config"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/httpclient"
+	"github.com/luminovaa/neonix-gateway-go/internal/util/urlvalidator"
 )
 
 type CRSSyncService struct {
