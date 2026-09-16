@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/antigravity"
 )
 
 type AntigravityOAuthService struct {
@@ -477,6 +477,15 @@ func (s *AntigravityOAuthService) BuildAccountCredentials(tokenInfo *Antigravity
 		creds["plan_type"] = tokenInfo.PlanType
 	}
 	return creds
+}
+
+// Cancel removes a pending manual login session. It is intentionally
+// idempotent so closing a dialog or retrying cleanup cannot leak session state.
+func (s *AntigravityOAuthService) Cancel(sessionID string) {
+	if s == nil || s.sessionStore == nil {
+		return
+	}
+	s.sessionStore.Delete(strings.TrimSpace(sessionID))
 }
 
 // Stop 停止服务

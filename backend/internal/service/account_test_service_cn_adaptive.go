@@ -10,8 +10,8 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/claude"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/openai"
 	"github.com/gin-gonic/gin"
 )
 

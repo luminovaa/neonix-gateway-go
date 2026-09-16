@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/luminovaa/neonix-gateway-go/internal/service"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -19,7 +19,8 @@ import (
 
 // mockTempUnscheduler 记录 TempUnscheduleRetryableError 的调用信息。
 type mockTempUnscheduler struct {
-	calls []tempUnscheduleCall
+	calls     []tempUnscheduleCall
+	cooldowns []providerCooldownCall
 }
 
 type tempUnscheduleCall struct {
@@ -27,8 +28,108 @@ type tempUnscheduleCall struct {
 	failoverErr *service.UpstreamFailoverError
 }
 
+type providerCooldownCall struct {
+	accountID int64
+	until     time.Time
+	reason    string
+}
+
 func (m *mockTempUnscheduler) TempUnscheduleRetryableError(_ context.Context, accountID int64, failoverErr *service.UpstreamFailoverError) {
 	m.calls = append(m.calls, tempUnscheduleCall{accountID: accountID, failoverErr: failoverErr})
+}
+
+func (m *mockTempUnscheduler) TempUnscheduleProviderCooldown(_ context.Context, accountID int64, until time.Time, reason string) {
+	m.cooldowns = append(m.cooldowns, providerCooldownCall{accountID: accountID, until: until, reason: reason})
+}
+
+func TestHandleFailoverErrorQoderQuotaSetsBoundedCooldown(t *testing.T) {
+	resetAt := time.Now().Add(17 * time.Second)
+	mock := &mockTempUnscheduler{}
+	state := NewFailoverState(2, false)
+	action := state.HandleFailoverError(context.Background(), mock, 42, service.PlatformQoder, 0, &service.UpstreamFailoverError{
+		StatusCode:               http.StatusTooManyRequests,
+		Scope:                    service.GatewayFailureScopeAccount,
+		NextAccountAction:        service.NextAccountRetry,
+		SameAccountRetryDeadline: resetAt,
+	})
+	require.Equal(t, FailoverContinue, action)
+	require.Len(t, mock.cooldowns, 1)
+	require.Equal(t, int64(42), mock.cooldowns[0].accountID)
+	require.Equal(t, "qoder_quota_or_rate_limit", mock.cooldowns[0].reason)
+	require.WithinDuration(t, resetAt, mock.cooldowns[0].until, time.Millisecond)
+}
+
+func TestHandleFailoverErrorQoderQuotaUsesFallbackCooldown(t *testing.T) {
+	mock := &mockTempUnscheduler{}
+	state := NewFailoverState(2, false)
+	before := time.Now().Add(59 * time.Second)
+	state.HandleFailoverError(context.Background(), mock, 42, service.PlatformQoder, 0, &service.UpstreamFailoverError{
+		StatusCode:        http.StatusForbidden,
+		Scope:             service.GatewayFailureScopeAccount,
+		NextAccountAction: service.NextAccountRetry,
+	})
+	require.Len(t, mock.cooldowns, 1)
+	require.True(t, mock.cooldowns[0].until.After(before))
+	require.True(t, mock.cooldowns[0].until.Before(time.Now().Add(61*time.Second)))
+}
+
+func TestHandleFailoverErrorQoderRequestFailureDoesNotBlockAccount(t *testing.T) {
+	mock := &mockTempUnscheduler{}
+	state := NewFailoverState(2, false)
+	state.HandleFailoverError(context.Background(), mock, 42, service.PlatformQoder, 0, &service.UpstreamFailoverError{
+		StatusCode:        http.StatusTooManyRequests,
+		Scope:             service.GatewayFailureScopeRequest,
+		NextAccountAction: service.NextAccountStop,
+	})
+	require.Empty(t, mock.cooldowns)
+}
+
+func TestHandleFailoverErrorQoderPersistsObservedCooldownAfterClientCancel(t *testing.T) {
+	mock := &mockTempUnscheduler{}
+	state := NewFailoverState(2, false)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	action := state.HandleFailoverError(ctx, mock, 42, service.PlatformQoder, 0, &service.UpstreamFailoverError{
+		StatusCode:        http.StatusTooManyRequests,
+		Scope:             service.GatewayFailureScopeAccount,
+		NextAccountAction: service.NextAccountRetry,
+	})
+	require.Equal(t, FailoverCanceled, action)
+	require.Len(t, mock.cooldowns, 1)
+}
+
+func TestHandleFailoverErrorCodeBuddyQuotaSetsBoundedCooldown(t *testing.T) {
+	resetAt := time.Now().Add(23 * time.Second)
+	mock := &mockTempUnscheduler{}
+	state := NewFailoverState(2, false)
+	action := state.HandleFailoverError(context.Background(), mock, 84, service.PlatformCodeBuddy, 0, &service.UpstreamFailoverError{
+		StatusCode:               http.StatusTooManyRequests,
+		Scope:                    service.GatewayFailureScopeAccount,
+		NextAccountAction:        service.NextAccountRetry,
+		SameAccountRetryDeadline: resetAt,
+	})
+	require.Equal(t, FailoverContinue, action)
+	require.Len(t, mock.cooldowns, 1)
+	require.Equal(t, int64(84), mock.cooldowns[0].accountID)
+	require.Equal(t, "codebuddy_quota_or_rate_limit", mock.cooldowns[0].reason)
+	require.WithinDuration(t, resetAt, mock.cooldowns[0].until, time.Millisecond)
+}
+
+func TestHandleFailoverErrorCodeBuddyChinaQuotaSetsBoundedCooldown(t *testing.T) {
+	resetAt := time.Now().Add(29 * time.Second)
+	mock := &mockTempUnscheduler{}
+	state := NewFailoverState(2, false)
+	action := state.HandleFailoverError(context.Background(), mock, 85, service.PlatformCodeBuddyChina, 0, &service.UpstreamFailoverError{
+		StatusCode:               http.StatusTooManyRequests,
+		Scope:                    service.GatewayFailureScopeAccount,
+		NextAccountAction:        service.NextAccountRetry,
+		SameAccountRetryDeadline: resetAt,
+	})
+	require.Equal(t, FailoverContinue, action)
+	require.Len(t, mock.cooldowns, 1)
+	require.Equal(t, int64(85), mock.cooldowns[0].accountID)
+	require.Equal(t, "codebuddy_china_quota_or_rate_limit", mock.cooldowns[0].reason)
+	require.WithinDuration(t, resetAt, mock.cooldowns[0].until, time.Millisecond)
 }
 
 func TestSameAccountRetryDelayFor(t *testing.T) {

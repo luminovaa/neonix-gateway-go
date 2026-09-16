@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	pluginv1 "github.com/Wei-Shaw/sub2api/pkg/pluginapi/v1"
+	pluginv1 "github.com/luminovaa/neonix-gateway-go/pkg/pluginapi/v1"
 )
 
 const (

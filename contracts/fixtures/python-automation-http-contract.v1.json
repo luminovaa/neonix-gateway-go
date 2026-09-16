@@ -1,0 +1,49 @@
+{
+  "version": "neonix-python-automation-v1",
+  "authentication": {
+    "header": "x-api-key",
+    "sharedSecretEnv": "PYAUTO_INTERNAL_API_KEY",
+    "maxHeaderBytes": 4096
+  },
+  "limits": {
+    "requestBodyBytes": 2097152,
+    "responseBodyBytes": 1048576,
+    "jobIdBytes": 128
+  },
+  "supportedJobTypes": ["register", "register_subscribe", "relogin", "inject"],
+  "worker": {
+    "baseUrlEnv": "PYAUTO_BASE_URL",
+    "callbackUrlEnv": "PYAUTO_BACKEND_CALLBACK_URL",
+    "routes": [
+      {"method": "GET", "path": "/health", "auth": "none", "successStatus": 200},
+      {"method": "POST", "path": "/job/start", "auth": "internal", "successStatus": 200},
+      {"method": "GET", "path": "/job/{job_id}/status", "auth": "internal", "successStatus": 200},
+      {"method": "GET", "path": "/job/{job_id}/logs", "auth": "internal", "successStatus": 200},
+      {"method": "POST", "path": "/job/{job_id}/cancel", "auth": "internal", "successStatus": 200},
+      {"method": "GET", "path": "/job/bfs-lockout", "auth": "internal", "successStatus": 200},
+      {"method": "POST", "path": "/api/mailbox/poll", "auth": "internal", "successStatus": 200}
+    ]
+  },
+  "runtimeManager": {
+    "baseUrlEnv": "RUNTIME_MANAGER_URL",
+    "secretEnv": "RUNTIME_MANAGER_API_KEY",
+    "secretFallbackEnv": "PYAUTO_INTERNAL_API_KEY",
+    "routes": [
+      {"method": "GET", "path": "/health", "auth": "none", "successStatus": 200},
+      {"method": "GET", "path": "/status", "auth": "internal", "successStatus": 200},
+      {"method": "POST", "path": "/acquire", "auth": "internal", "successStatus": 200},
+      {"method": "POST", "path": "/release", "auth": "internal", "successStatus": 200}
+    ]
+  },
+  "jobStatusValues": ["pending", "running", "done", "failed", "cancelled"],
+  "secretFieldsForbiddenInPublicResponses": [
+    "access_token",
+    "refresh_token",
+    "id_token",
+    "password",
+    "api_key",
+    "authorization_code",
+    "callback_url",
+    "code_verifier"
+  ]
+}

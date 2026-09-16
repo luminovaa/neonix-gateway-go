@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/luminovaa/neonix-gateway-go/internal/service"
 )
 
 type stubAdminService struct {
@@ -494,6 +494,10 @@ func (s *stubAdminService) GetAccount(ctx context.Context, id int64) (*service.A
 	}
 	account := service.Account{ID: id, Name: "account", Status: service.StatusActive}
 	return &account, nil
+}
+
+func (s *stubAdminService) RevealLinkedGitHubIdentityPassword(context.Context, int64) (string, error) {
+	return "github-password", nil
 }
 
 func (s *stubAdminService) GetAccountsByIDs(ctx context.Context, ids []int64) ([]*service.Account, error) {

@@ -1763,9 +1763,9 @@ func NormalizeRunMode(value string) string {
 	normalized := strings.ToLower(strings.TrimSpace(value))
 	switch normalized {
 	case RunModeStandard, RunModeSimple:
-		return normalized
+		return RunModeSimple
 	default:
-		return RunModeStandard
+		return RunModeSimple
 	}
 }
 
@@ -1987,7 +1987,7 @@ func configureConfigSource(setConfigFile, addConfigPath func(string)) {
 }
 
 func setDefaults() {
-	viper.SetDefault("run_mode", RunModeStandard)
+	viper.SetDefault("run_mode", RunModeSimple)
 
 	// Server
 	viper.SetDefault("server.host", "0.0.0.0")
@@ -2646,6 +2646,9 @@ func setEnvReachableDefaults() {
 }
 
 func (c *Config) Validate() error {
+	if err := validateNeonixInternalServiceSecrets(); err != nil {
+		return err
+	}
 	forwardedClientIPHeaders, err := NormalizeForwardedClientIPHeaders(c.Security.ForwardedClientIPHeaders)
 	if err != nil {
 		return fmt.Errorf("security.forwarded_client_ip_headers: %w", err)
@@ -3706,6 +3709,27 @@ func (c *Config) Validate() error {
 	}
 	if err := ValidateDingTalkConfig(c.DingTalk); err != nil {
 		return fmt.Errorf("dingtalk_connect: %w", err)
+	}
+	return nil
+}
+
+// validateNeonixInternalServiceSecrets keeps the worker and runtime-manager
+// credentials in distinct authentication domains. API_SECRET was a retired
+// Node compatibility secret and must never authenticate either service.
+func validateNeonixInternalServiceSecrets() error {
+	workerURL := strings.TrimSpace(os.Getenv("PYAUTO_BASE_URL"))
+	managerURL := strings.TrimSpace(os.Getenv("RUNTIME_MANAGER_URL"))
+	workerKey := strings.TrimSpace(os.Getenv("PYAUTO_INTERNAL_API_KEY"))
+	managerKey := strings.TrimSpace(os.Getenv("RUNTIME_MANAGER_API_KEY"))
+
+	if workerURL != "" && workerKey == "" {
+		return fmt.Errorf("PYAUTO_INTERNAL_API_KEY is required when PYAUTO_BASE_URL is configured")
+	}
+	if managerURL != "" && managerKey == "" {
+		return fmt.Errorf("RUNTIME_MANAGER_API_KEY is required when RUNTIME_MANAGER_URL is configured")
+	}
+	if workerKey != "" && managerKey != "" && workerKey == managerKey {
+		return fmt.Errorf("PYAUTO_INTERNAL_API_KEY and RUNTIME_MANAGER_API_KEY must differ")
 	}
 	return nil
 }

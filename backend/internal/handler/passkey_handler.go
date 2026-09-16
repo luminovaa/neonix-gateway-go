@@ -9,11 +9,11 @@ import (
 	"strconv"
 	"strings"
 
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
-	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	infraerrors "github.com/luminovaa/neonix-gateway-go/internal/pkg/errors"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/ip"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/response"
+	middleware2 "github.com/luminovaa/neonix-gateway-go/internal/server/middleware"
+	"github.com/luminovaa/neonix-gateway-go/internal/service"
 	"github.com/gin-gonic/gin"
 )
 

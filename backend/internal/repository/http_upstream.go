@@ -26,14 +26,14 @@ import (
 	"golang.org/x/mod/semver"
 	"golang.org/x/net/http2"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyurl"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyutil"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/servertiming"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
-	"github.com/Wei-Shaw/sub2api/internal/service"
-	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
+	"github.com/luminovaa/neonix-gateway-go/internal/config"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/proxyurl"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/proxyutil"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/servertiming"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/tlsfingerprint"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/xai"
+	"github.com/luminovaa/neonix-gateway-go/internal/service"
+	"github.com/luminovaa/neonix-gateway-go/internal/util/urlvalidator"
 )
 
 // 默认配置常量

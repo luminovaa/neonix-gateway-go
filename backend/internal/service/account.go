@@ -13,11 +13,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/domain"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
+	"github.com/luminovaa/neonix-gateway-go/internal/config"
+	"github.com/luminovaa/neonix-gateway-go/internal/domain"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/geminicli"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/openai_compat"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/xai"
 )
 
 type Account struct {

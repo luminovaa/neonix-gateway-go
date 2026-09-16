@@ -14,13 +14,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/handler"
-	adminhandler "github.com/Wei-Shaw/sub2api/internal/handler/admin"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
-	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/luminovaa/neonix-gateway-go/internal/config"
+	"github.com/luminovaa/neonix-gateway-go/internal/handler"
+	adminhandler "github.com/luminovaa/neonix-gateway-go/internal/handler/admin"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/pagination"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/usagestats"
+	"github.com/luminovaa/neonix-gateway-go/internal/server/middleware"
+	"github.com/luminovaa/neonix-gateway-go/internal/service"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -314,23 +314,19 @@ func TestAPIContracts(t *testing.T) {
 			name: "GET /api/v1/groups/available",
 			setup: func(t *testing.T, deps *contractDeps) {
 				t.Helper()
-				// 普通用户可见的分组列表不应包含内部字段（如 model_routing/account_count），
-				// 也不得包含利润控制配置——它与同响应的 rate_multiplier 相乘即可反推上游成本上限。
+				// 普通用户可见的分组列表不应包含内部字段（如 model_routing/account_count）。
 				deps.groupRepo.SetActive([]service.Group{
 					{
-						ID:                   10,
-						Name:                 "Group One",
-						Description:          "desc",
-						Platform:             service.PlatformAnthropic,
-						RateMultiplier:       1.5,
-						PeakRateMultiplier:   1.0,
-						IsExclusive:          false,
-						Status:               service.StatusActive,
-						SubscriptionType:     service.SubscriptionTypeStandard,
-						ProfitControlEnabled: true,
-						ProfitMinMargin:      0.3,
-						ProfitSafetyBuffer:   0.05,
-						ModelRoutingEnabled:  true,
+						ID:                  10,
+						Name:                "Group One",
+						Description:         "desc",
+						Platform:            service.PlatformAnthropic,
+						RateMultiplier:      1.5,
+						PeakRateMultiplier:  1.0,
+						IsExclusive:         false,
+						Status:              service.StatusActive,
+						SubscriptionType:    service.SubscriptionTypeStandard,
+						ModelRoutingEnabled: true,
 						ModelRouting: map[string][]int64{
 							"claude-3-*": []int64{101, 102},
 						},

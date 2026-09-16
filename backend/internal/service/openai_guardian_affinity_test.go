@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/gin-gonic/gin"
+	"github.com/luminovaa/neonix-gateway-go/internal/config"
 	"github.com/stretchr/testify/require"
 )
 
@@ -232,7 +232,7 @@ func TestOpenAIGatewayService_GuardianParentHashCollisionPreservesParentBinding(
 			require.NoError(t, err)
 			require.NotNil(t, selection)
 			require.Equal(t, int64(39022), selection.Account.ID)
-			require.NoError(t, svc.BindStickySessionAfterProfitAdmission(ctx, &groupID, parentHash, selection.Account.ID))
+			require.NoError(t, svc.BindStickySessionForRequest(ctx, &groupID, parentHash, selection.Account.ID))
 			require.Equal(t, int64(39021), cache.sessionBindings["openai:"+parentHash])
 			require.Zero(t, cache.deletedSessions["openai:"+parentHash])
 			if selection.ReleaseFunc != nil {

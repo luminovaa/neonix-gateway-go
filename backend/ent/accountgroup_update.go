@@ -10,10 +10,10 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
-	"github.com/Wei-Shaw/sub2api/ent/account"
-	"github.com/Wei-Shaw/sub2api/ent/accountgroup"
-	"github.com/Wei-Shaw/sub2api/ent/group"
-	"github.com/Wei-Shaw/sub2api/ent/predicate"
+	"github.com/luminovaa/neonix-gateway-go/ent/account"
+	"github.com/luminovaa/neonix-gateway-go/ent/accountgroup"
+	"github.com/luminovaa/neonix-gateway-go/ent/group"
+	"github.com/luminovaa/neonix-gateway-go/ent/predicate"
 )
 
 // AccountGroupUpdate is the builder for updating AccountGroup entities.

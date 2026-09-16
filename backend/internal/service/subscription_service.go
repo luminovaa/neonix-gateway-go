@@ -9,12 +9,12 @@ import (
 	"strings"
 	"time"
 
-	dbent "github.com/Wei-Shaw/sub2api/ent"
-	"github.com/Wei-Shaw/sub2api/internal/config"
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/dgraph-io/ristretto"
+	dbent "github.com/luminovaa/neonix-gateway-go/ent"
+	"github.com/luminovaa/neonix-gateway-go/internal/config"
+	infraerrors "github.com/luminovaa/neonix-gateway-go/internal/pkg/errors"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/pagination"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/timezone"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -67,6 +67,12 @@ func NewSubscriptionService(groupRepo GroupRepository, userSubRepo UserSubscript
 		billingCacheService: billingCacheService,
 		entClient:           entClient,
 		now:                 time.Now,
+	}
+	// Neonix runs as a private single-operator instance. Subscription handlers
+	// remain temporarily available as migration references, but their cache
+	// subscriber and maintenance workers must not run in production simple mode.
+	if cfg != nil && cfg.RunMode == config.RunModeSimple {
+		return svc
 	}
 	svc.initSubCache(cfg)
 	svc.initMaintenanceQueue(cfg)

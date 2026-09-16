@@ -13,13 +13,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/luminovaa/neonix-gateway-go/internal/config"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/tlsfingerprint"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/xai"
+	"github.com/luminovaa/neonix-gateway-go/internal/service"
 )
 
 type grokQuotaHandlerAccountRepo struct {

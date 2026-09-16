@@ -11,9 +11,9 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
-	"github.com/Wei-Shaw/sub2api/ent/predicate"
-	"github.com/Wei-Shaw/sub2api/ent/promocode"
-	"github.com/Wei-Shaw/sub2api/ent/promocodeusage"
+	"github.com/luminovaa/neonix-gateway-go/ent/predicate"
+	"github.com/luminovaa/neonix-gateway-go/ent/promocode"
+	"github.com/luminovaa/neonix-gateway-go/ent/promocodeusage"
 )
 
 // PromoCodeUpdate is the builder for updating PromoCode entities.

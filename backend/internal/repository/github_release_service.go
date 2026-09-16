@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/httpclient"
+	"github.com/luminovaa/neonix-gateway-go/internal/service"
 )
 
 type githubReleaseClient struct {

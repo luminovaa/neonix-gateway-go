@@ -7,9 +7,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+	"github.com/luminovaa/neonix-gateway-go/internal/config"
 	"github.com/stretchr/testify/require"
 )
 

@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"time"
 
-	dbent "github.com/Wei-Shaw/sub2api/ent"
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
+	dbent "github.com/luminovaa/neonix-gateway-go/ent"
+	infraerrors "github.com/luminovaa/neonix-gateway-go/internal/pkg/errors"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/pagination"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/usagestats"
 )
 
 var (
@@ -62,6 +62,25 @@ type UsageService struct {
 	authCacheInvalidator APIKeyAuthCacheInvalidator
 }
 
+// APIKeyAccessStats is the small access footprint shown by the Neonix
+// operator panel. It is deliberately separate from UsageStats so providers
+// can implement it without widening the long-lived UsageLogRepository
+// interface used by existing test doubles and integrations.
+type APIKeyAccessStats struct {
+	TotalRequests    int64      `json:"total_requests"`
+	UniqueIPs        int64      `json:"unique_ips"`
+	UniqueUserAgents int64      `json:"unique_user_agents"`
+	LastAccessedAt   *time.Time `json:"last_accessed_at,omitempty"`
+}
+
+// APIKeyRequestStats separates all request rows from successfully billed
+// rows. The distinction is needed by the legacy Neonix API-key dashboard,
+// whose success counter is not present in UsageStats.
+type APIKeyRequestStats struct {
+	TotalRequests   int64 `json:"total_requests"`
+	SuccessRequests int64 `json:"success_requests"`
+}
+
 // NewUsageService 创建使用统计服务实例
 func NewUsageService(usageRepo UsageLogRepository, userRepo UserRepository, entClient *dbent.Client, authCacheInvalidator APIKeyAuthCacheInvalidator) *UsageService {
 	return &UsageService{
@@ -70,6 +89,41 @@ func NewUsageService(usageRepo UsageLogRepository, userRepo UserRepository, entC
 		entClient:            entClient,
 		authCacheInvalidator: authCacheInvalidator,
 	}
+}
+
+// GetAPIKeyAccessStats returns request count and distinct client fingerprints
+// when the concrete repository supports the optional access-stat query. Older
+// repositories return an explicit zero snapshot rather than inventing values.
+func (s *UsageService) GetAPIKeyAccessStats(ctx context.Context, apiKeyID int64) (*APIKeyAccessStats, error) {
+	if s == nil || s.usageRepo == nil {
+		return nil, fmt.Errorf("usage repository is not configured")
+	}
+	if reader, ok := s.usageRepo.(interface {
+		GetAPIKeyAccessStatsSince(context.Context, int64, time.Time) (*APIKeyAccessStats, error)
+	}); ok {
+		return reader.GetAPIKeyAccessStatsSince(ctx, apiKeyID, time.Now().UTC().Add(-24*time.Hour))
+	}
+	if reader, ok := s.usageRepo.(interface {
+		GetAPIKeyAccessStats(context.Context, int64) (*APIKeyAccessStats, error)
+	}); ok {
+		return reader.GetAPIKeyAccessStats(ctx, apiKeyID)
+	}
+	return &APIKeyAccessStats{}, nil
+}
+
+// GetAPIKeyRequestStats returns all and successful request counts when the
+// concrete usage repository supports the optional query.
+func (s *UsageService) GetAPIKeyRequestStats(ctx context.Context, apiKeyID int64, startTime, endTime time.Time) (*APIKeyRequestStats, error) {
+	if s == nil || s.usageRepo == nil {
+		return nil, fmt.Errorf("usage repository is not configured")
+	}
+	reader, ok := s.usageRepo.(interface {
+		GetAPIKeyRequestStats(context.Context, int64, time.Time, time.Time) (*APIKeyRequestStats, error)
+	})
+	if !ok {
+		return nil, fmt.Errorf("api key request stats are not supported")
+	}
+	return reader.GetAPIKeyRequestStats(ctx, apiKeyID, startTime, endTime)
 }
 
 // Create 创建使用日志
@@ -395,6 +449,15 @@ func (s *UsageService) GetGroupStatsWithFilters(ctx context.Context, startTime, 
 
 // GetAPIKeyModelStats returns per-model usage stats for a specific API Key.
 func (s *UsageService) GetAPIKeyModelStats(ctx context.Context, apiKeyID int64, startTime, endTime time.Time) ([]usagestats.ModelStat, error) {
+	if reader, ok := s.usageRepo.(interface {
+		GetAPIKeyModelStatsCompat(context.Context, int64, time.Time, time.Time) ([]usagestats.ModelStat, error)
+	}); ok {
+		stats, err := reader.GetAPIKeyModelStatsCompat(ctx, apiKeyID, startTime, endTime)
+		if err != nil {
+			return nil, fmt.Errorf("get API key compatibility model stats: %w", err)
+		}
+		return stats, nil
+	}
 	stats, err := s.usageRepo.GetModelStatsWithFilters(ctx, startTime, endTime, 0, apiKeyID, 0, 0, nil, nil, nil)
 	if err != nil {
 		return nil, fmt.Errorf("get api key model stats: %w", err)

@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/xai"
 )
 
 // Canonical video price family keys used in groups.video_model_prices JSONB.

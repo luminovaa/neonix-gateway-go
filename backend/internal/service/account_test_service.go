@@ -26,15 +26,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
-	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/luminovaa/neonix-gateway-go/internal/config"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/claude"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/geminicli"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/openai"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/openai_compat"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/xai"
+	"github.com/luminovaa/neonix-gateway-go/internal/util/urlvalidator"
 	"github.com/tidwall/gjson"
 )
 
@@ -138,25 +138,47 @@ func normalizeGrokAccountTestMode(mode string) string {
 
 // AccountTestService handles account testing operations
 type AccountTestService struct {
-	accountRepo               AccountRepository
-	geminiTokenProvider       *GeminiTokenProvider
-	claudeTokenProvider       *ClaudeTokenProvider
-	grokTokenProvider         *GrokTokenProvider
-	antigravityGatewayService *AntigravityGatewayService
-	httpUpstream              HTTPUpstream
-	cfg                       *config.Config
-	settingService            *SettingService
-	tlsFPProfileService       *TLSFingerprintProfileService
-	modelMetadataRegistryMu   sync.Mutex
-	modelMetadataRegistry     map[string]modelsDevProvider
-	modelMetadataRegistryAt   time.Time
-	pluginManager             *PluginManager
-	openaiGatewayService      *OpenAIGatewayService
-	agentIdentityTaskMu       sync.Mutex
-	agentIdentityWS           agentIdentityWSConnectionInvalidator
+	accountRepo                  AccountRepository
+	geminiTokenProvider          *GeminiTokenProvider
+	claudeTokenProvider          *ClaudeTokenProvider
+	grokTokenProvider            *GrokTokenProvider
+	antigravityGatewayService    *AntigravityGatewayService
+	kiroGatewayService           *KiroGatewayService
+	qoderGatewayService          *QoderGatewayService
+	codeBuddyGatewayService      *CodeBuddyGatewayService
+	codeBuddyChinaGatewayService *CodeBuddyChinaGatewayService
+	httpUpstream                 HTTPUpstream
+	cfg                          *config.Config
+	settingService               *SettingService
+	tlsFPProfileService          *TLSFingerprintProfileService
+	modelMetadataRegistryMu      sync.Mutex
+	modelMetadataRegistry        map[string]modelsDevProvider
+	modelMetadataRegistryAt      time.Time
+	pluginManager                *PluginManager
+	openaiGatewayService         *OpenAIGatewayService
+	agentIdentityTaskMu          sync.Mutex
+	agentIdentityWS              agentIdentityWSConnectionInvalidator
 	// grokWSDialer is optional; realtime account tests use the default OpenAI-style
 	// WS dialer when nil (supports proxy + coder/websocket handshake).
 	grokWSDialer openAIWSClientDialer
+}
+
+func (s *AccountTestService) SetQoderGatewayService(gateway *QoderGatewayService) {
+	if s != nil {
+		s.qoderGatewayService = gateway
+	}
+}
+
+func (s *AccountTestService) SetCodeBuddyGatewayService(gateway *CodeBuddyGatewayService) {
+	if s != nil {
+		s.codeBuddyGatewayService = gateway
+	}
+}
+
+func (s *AccountTestService) SetCodeBuddyChinaGatewayService(gateway *CodeBuddyChinaGatewayService) {
+	if s != nil {
+		s.codeBuddyChinaGatewayService = gateway
+	}
 }
 
 func (s *AccountTestService) SetSettingService(settingService *SettingService) {
@@ -237,6 +259,7 @@ func NewAccountTestService(
 	claudeTokenProvider *ClaudeTokenProvider,
 	grokTokenProvider *GrokTokenProvider,
 	antigravityGatewayService *AntigravityGatewayService,
+	kiroGatewayService *KiroGatewayService,
 	httpUpstream HTTPUpstream,
 	cfg *config.Config,
 	tlsFPProfileService *TLSFingerprintProfileService,
@@ -247,6 +270,7 @@ func NewAccountTestService(
 		claudeTokenProvider:       claudeTokenProvider,
 		grokTokenProvider:         grokTokenProvider,
 		antigravityGatewayService: antigravityGatewayService,
+		kiroGatewayService:        kiroGatewayService,
 		httpUpstream:              httpUpstream,
 		cfg:                       cfg,
 		tlsFPProfileService:       tlsFPProfileService,
@@ -385,7 +409,157 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 		return s.routeAntigravityTest(c, account, modelID, prompt)
 	}
 
+	if account.Platform == PlatformKiro {
+		return s.testKiroAccountConnection(c, account, modelID, prompt)
+	}
+	if account.Platform == PlatformQoder {
+		return s.testQoderAccountConnection(c, account, modelID, prompt)
+	}
+	if account.Platform == PlatformCodeBuddy || account.Platform == PlatformWorkBuddy {
+		return s.testCodeBuddyAccountConnection(c, account, modelID, prompt)
+	}
+	if account.Platform == PlatformCodeBuddyChina {
+		return s.testCodeBuddyChinaAccountConnection(c, account, modelID, prompt)
+	}
+
 	return s.testClaudeAccountConnection(c, account, modelID)
+}
+
+func (s *AccountTestService) testCodeBuddyAccountConnection(c *gin.Context, account *Account, modelID, prompt string) error {
+	if s.codeBuddyGatewayService == nil {
+		return s.sendErrorAndEnd(c, "CodeBuddy gateway service not configured")
+	}
+	if strings.TrimSpace(modelID) == "" {
+		modelID = "cb/"
+	}
+	return s.testCodeBuddyCompatibleAccountConnection(c, account, modelID, prompt, "CodeBuddy", s.codeBuddyGatewayService.ForwardAsChatCompletions)
+}
+
+func (s *AccountTestService) testCodeBuddyChinaAccountConnection(c *gin.Context, account *Account, modelID, prompt string) error {
+	if s.codeBuddyChinaGatewayService == nil {
+		return s.sendErrorAndEnd(c, "CodeBuddy China gateway service not configured")
+	}
+	if strings.TrimSpace(modelID) == "" {
+		modelID = "cbc/deepseek-v3"
+	}
+	return s.testCodeBuddyCompatibleAccountConnection(c, account, modelID, prompt, "CodeBuddy China", s.codeBuddyChinaGatewayService.ForwardAsChatCompletions)
+}
+
+type codeBuddyCompatibleForward func(context.Context, *gin.Context, *Account, []byte) (*ForwardResult, error)
+
+func (s *AccountTestService) testCodeBuddyCompatibleAccountConnection(c *gin.Context, account *Account, modelID, prompt, providerName string, forward codeBuddyCompatibleForward) error {
+	if strings.TrimSpace(prompt) == "" {
+		prompt = "hi"
+	}
+	s.sendEvent(c, TestEvent{Type: "test_start", Model: modelID})
+	body, _ := json.Marshal(map[string]any{"model": modelID, "stream": false, "max_tokens": 3, "messages": []map[string]string{{"role": "user", "content": prompt}}})
+	recorder := httptest.NewRecorder()
+	probe, _ := gin.CreateTestContext(recorder)
+	probe.Request = c.Request.Clone(c.Request.Context())
+	if _, err := forward(c.Request.Context(), probe, account, body); err != nil {
+		return s.sendErrorAndEnd(c, err.Error())
+	}
+	var response struct {
+		Choices []struct {
+			Message struct {
+				Content          json.RawMessage `json:"content"`
+				ReasoningContent string          `json:"reasoning_content"`
+				ToolCalls        []any           `json:"tool_calls"`
+			} `json:"message"`
+			FinishReason string `json:"finish_reason"`
+		} `json:"choices"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil || len(response.Choices) == 0 {
+		return s.sendErrorAndEnd(c, providerName+" returned an invalid response")
+	}
+	choice := response.Choices[0]
+	var text string
+	_ = json.Unmarshal(choice.Message.Content, &text)
+	if text != "" {
+		s.sendEvent(c, TestEvent{Type: "content", Text: text})
+	}
+	if text == "" && choice.Message.ReasoningContent == "" && len(choice.Message.ToolCalls) == 0 && strings.TrimSpace(choice.FinishReason) == "" {
+		return s.sendErrorAndEnd(c, providerName+" returned no completion")
+	}
+	s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+	return nil
+}
+
+func (s *AccountTestService) testQoderAccountConnection(c *gin.Context, account *Account, modelID, prompt string) error {
+	if s.qoderGatewayService == nil {
+		return s.sendErrorAndEnd(c, "Qoder gateway service not configured")
+	}
+	if strings.TrimSpace(modelID) == "" {
+		modelID = "qr/Lite"
+	}
+	if strings.TrimSpace(prompt) == "" {
+		prompt = "hi"
+	}
+	s.sendEvent(c, TestEvent{Type: "test_start", Model: modelID})
+	body, _ := json.Marshal(map[string]any{"model": modelID, "stream": false, "max_tokens": 3, "messages": []map[string]string{{"role": "user", "content": prompt}}})
+	recorder := httptest.NewRecorder()
+	probe, _ := gin.CreateTestContext(recorder)
+	probe.Request = c.Request.Clone(c.Request.Context())
+	if _, err := s.qoderGatewayService.ForwardAsChatCompletions(c.Request.Context(), probe, account, body); err != nil {
+		return s.sendErrorAndEnd(c, err.Error())
+	}
+	var response struct {
+		Choices []struct {
+			Message struct {
+				Content json.RawMessage `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil || len(response.Choices) == 0 {
+		return s.sendErrorAndEnd(c, "Qoder returned an invalid response")
+	}
+	var text string
+	_ = json.Unmarshal(response.Choices[0].Message.Content, &text)
+	if text != "" {
+		s.sendEvent(c, TestEvent{Type: "content", Text: text})
+	}
+	s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+	return nil
+}
+
+func (s *AccountTestService) testKiroAccountConnection(c *gin.Context, account *Account, modelID, prompt string) error {
+	if s.kiroGatewayService == nil {
+		return s.sendErrorAndEnd(c, "Kiro gateway service not configured")
+	}
+	if strings.TrimSpace(modelID) == "" {
+		modelID = account.GetMappedModel("claude-sonnet-4")
+	}
+	if strings.TrimSpace(prompt) == "" {
+		prompt = "hi"
+	}
+	s.sendEvent(c, TestEvent{Type: "test_start", Model: modelID})
+	body, _ := json.Marshal(map[string]any{
+		"model": modelID, "stream": false,
+		"messages": []map[string]string{{"role": "user", "content": prompt}},
+	})
+	recorder := httptest.NewRecorder()
+	probe, _ := gin.CreateTestContext(recorder)
+	probe.Request = c.Request.Clone(c.Request.Context())
+	if _, err := s.kiroGatewayService.ForwardAsChatCompletions(c.Request.Context(), probe, account, body); err != nil {
+		return s.sendErrorAndEnd(c, err.Error())
+	}
+	var response struct {
+		Choices []struct {
+			Message struct {
+				Content json.RawMessage `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil || len(response.Choices) == 0 {
+		return s.sendErrorAndEnd(c, "Kiro returned an invalid response")
+	}
+	var text string
+	_ = json.Unmarshal(response.Choices[0].Message.Content, &text)
+	if text != "" {
+		s.sendEvent(c, TestEvent{Type: "content", Text: text})
+	}
+	s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+	return nil
 }
 
 func (s *AccountTestService) testCNProviderChatCompletionsConnection(c *gin.Context, account *Account, modelID string, prompt string) error {

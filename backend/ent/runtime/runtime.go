@@ -5,47 +5,47 @@ package runtime
 import (
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/ent/account"
-	"github.com/Wei-Shaw/sub2api/ent/accountgroup"
-	"github.com/Wei-Shaw/sub2api/ent/announcement"
-	"github.com/Wei-Shaw/sub2api/ent/announcementread"
-	"github.com/Wei-Shaw/sub2api/ent/apikey"
-	"github.com/Wei-Shaw/sub2api/ent/authidentity"
-	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
-	"github.com/Wei-Shaw/sub2api/ent/batchimageevent"
-	"github.com/Wei-Shaw/sub2api/ent/batchimageitem"
-	"github.com/Wei-Shaw/sub2api/ent/batchimagejob"
-	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
-	"github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup"
-	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
-	"github.com/Wei-Shaw/sub2api/ent/channelmonitorrequesttemplate"
-	"github.com/Wei-Shaw/sub2api/ent/compositemodelroute"
-	"github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule"
-	"github.com/Wei-Shaw/sub2api/ent/group"
-	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
-	"github.com/Wei-Shaw/sub2api/ent/identityadoptiondecision"
-	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
-	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
-	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
-	"github.com/Wei-Shaw/sub2api/ent/pendingauthsession"
-	"github.com/Wei-Shaw/sub2api/ent/promocode"
-	"github.com/Wei-Shaw/sub2api/ent/promocodeusage"
-	"github.com/Wei-Shaw/sub2api/ent/proxy"
-	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
-	"github.com/Wei-Shaw/sub2api/ent/schema"
-	"github.com/Wei-Shaw/sub2api/ent/securitysecret"
-	"github.com/Wei-Shaw/sub2api/ent/setting"
-	"github.com/Wei-Shaw/sub2api/ent/subscriptionplan"
-	"github.com/Wei-Shaw/sub2api/ent/tlsfingerprintprofile"
-	"github.com/Wei-Shaw/sub2api/ent/usagecleanuptask"
-	"github.com/Wei-Shaw/sub2api/ent/usagelog"
-	"github.com/Wei-Shaw/sub2api/ent/user"
-	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
-	"github.com/Wei-Shaw/sub2api/ent/userattributedefinition"
-	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
-	"github.com/Wei-Shaw/sub2api/ent/userplatformquota"
-	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
-	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/luminovaa/neonix-gateway-go/ent/account"
+	"github.com/luminovaa/neonix-gateway-go/ent/accountgroup"
+	"github.com/luminovaa/neonix-gateway-go/ent/announcement"
+	"github.com/luminovaa/neonix-gateway-go/ent/announcementread"
+	"github.com/luminovaa/neonix-gateway-go/ent/apikey"
+	"github.com/luminovaa/neonix-gateway-go/ent/authidentity"
+	"github.com/luminovaa/neonix-gateway-go/ent/authidentitychannel"
+	"github.com/luminovaa/neonix-gateway-go/ent/batchimageevent"
+	"github.com/luminovaa/neonix-gateway-go/ent/batchimageitem"
+	"github.com/luminovaa/neonix-gateway-go/ent/batchimagejob"
+	"github.com/luminovaa/neonix-gateway-go/ent/channelmonitor"
+	"github.com/luminovaa/neonix-gateway-go/ent/channelmonitordailyrollup"
+	"github.com/luminovaa/neonix-gateway-go/ent/channelmonitorhistory"
+	"github.com/luminovaa/neonix-gateway-go/ent/channelmonitorrequesttemplate"
+	"github.com/luminovaa/neonix-gateway-go/ent/compositemodelroute"
+	"github.com/luminovaa/neonix-gateway-go/ent/errorpassthroughrule"
+	"github.com/luminovaa/neonix-gateway-go/ent/group"
+	"github.com/luminovaa/neonix-gateway-go/ent/idempotencyrecord"
+	"github.com/luminovaa/neonix-gateway-go/ent/identityadoptiondecision"
+	"github.com/luminovaa/neonix-gateway-go/ent/paymentauditlog"
+	"github.com/luminovaa/neonix-gateway-go/ent/paymentorder"
+	"github.com/luminovaa/neonix-gateway-go/ent/paymentproviderinstance"
+	"github.com/luminovaa/neonix-gateway-go/ent/pendingauthsession"
+	"github.com/luminovaa/neonix-gateway-go/ent/promocode"
+	"github.com/luminovaa/neonix-gateway-go/ent/promocodeusage"
+	"github.com/luminovaa/neonix-gateway-go/ent/proxy"
+	"github.com/luminovaa/neonix-gateway-go/ent/redeemcode"
+	"github.com/luminovaa/neonix-gateway-go/ent/schema"
+	"github.com/luminovaa/neonix-gateway-go/ent/securitysecret"
+	"github.com/luminovaa/neonix-gateway-go/ent/setting"
+	"github.com/luminovaa/neonix-gateway-go/ent/subscriptionplan"
+	"github.com/luminovaa/neonix-gateway-go/ent/tlsfingerprintprofile"
+	"github.com/luminovaa/neonix-gateway-go/ent/usagecleanuptask"
+	"github.com/luminovaa/neonix-gateway-go/ent/usagelog"
+	"github.com/luminovaa/neonix-gateway-go/ent/user"
+	"github.com/luminovaa/neonix-gateway-go/ent/userallowedgroup"
+	"github.com/luminovaa/neonix-gateway-go/ent/userattributedefinition"
+	"github.com/luminovaa/neonix-gateway-go/ent/userattributevalue"
+	"github.com/luminovaa/neonix-gateway-go/ent/userplatformquota"
+	"github.com/luminovaa/neonix-gateway-go/ent/usersubscription"
+	"github.com/luminovaa/neonix-gateway-go/internal/domain"
 )
 
 // The init function reads all schema descriptors with runtime code
@@ -1211,18 +1211,6 @@ func init() {
 	groupDescReasoningEffortMappings := groupFields[59].Descriptor()
 	// group.DefaultReasoningEffortMappings holds the default value on creation for the reasoning_effort_mappings field.
 	group.DefaultReasoningEffortMappings = groupDescReasoningEffortMappings.Default.([]domain.ReasoningEffortMapping)
-	// groupDescProfitControlEnabled is the schema descriptor for profit_control_enabled field.
-	groupDescProfitControlEnabled := groupFields[60].Descriptor()
-	// group.DefaultProfitControlEnabled holds the default value on creation for the profit_control_enabled field.
-	group.DefaultProfitControlEnabled = groupDescProfitControlEnabled.Default.(bool)
-	// groupDescProfitMinMargin is the schema descriptor for profit_min_margin field.
-	groupDescProfitMinMargin := groupFields[61].Descriptor()
-	// group.DefaultProfitMinMargin holds the default value on creation for the profit_min_margin field.
-	group.DefaultProfitMinMargin = groupDescProfitMinMargin.Default.(float64)
-	// groupDescProfitSafetyBuffer is the schema descriptor for profit_safety_buffer field.
-	groupDescProfitSafetyBuffer := groupFields[62].Descriptor()
-	// group.DefaultProfitSafetyBuffer holds the default value on creation for the profit_safety_buffer field.
-	group.DefaultProfitSafetyBuffer = groupDescProfitSafetyBuffer.Default.(float64)
 	idempotencyrecordMixin := schema.IdempotencyRecord{}.Mixin()
 	idempotencyrecordMixinFields0 := idempotencyrecordMixin[0].Fields()
 	_ = idempotencyrecordMixinFields0

@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/timezone"
+	"github.com/luminovaa/neonix-gateway-go/internal/service"
 )
 
 // TestNextMonthlyResetTimeFrom_FromStart 验证：start 已知时返回 start+30d，不随 now 漂移。

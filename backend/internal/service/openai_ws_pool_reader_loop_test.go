@@ -14,7 +14,7 @@ import (
 	coderws "github.com/coder/websocket"
 	"github.com/stretchr/testify/require"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/luminovaa/neonix-gateway-go/internal/config"
 )
 
 // openAIWSReaderLoopFakeConn 模拟 coder/websocket 的契约：

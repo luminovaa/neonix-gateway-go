@@ -8,8 +8,8 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	infraerrors "github.com/luminovaa/neonix-gateway-go/internal/pkg/errors"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/pagination"
 	"image"
 	"image/color"
 	stddraw "image/draw"
@@ -309,7 +309,8 @@ func NewUserService(userRepo UserRepository, settingRepo SettingRepository, auth
 	}
 }
 
-// GetFirstAdmin 获取首个管理员用户（用于 Admin API Key 认证）
+// GetFirstAdmin returns the active local operator. The legacy name is retained
+// while the inherited role column is removed in a later schema migration.
 func (s *UserService) GetFirstAdmin(ctx context.Context) (*User, error) {
 	admin, err := s.userRepo.GetFirstAdmin(ctx)
 	if err != nil {
@@ -1057,6 +1058,31 @@ func (s *UserService) GetByID(ctx context.Context, id int64) (*User, error) {
 	if err := s.hydrateUserAvatar(ctx, user); err != nil {
 		return nil, fmt.Errorf("get user avatar: %w", err)
 	}
+	return user, nil
+}
+
+// GetByUsername resolves the local operator login name when the compatibility
+// UI uses username instead of email. The repository capability is optional so
+// existing service test doubles remain source-compatible.
+func (s *UserService) GetByUsername(ctx context.Context, username string) (*User, error) {
+	if s == nil || s.userRepo == nil {
+		return nil, ErrUserNotFound
+	}
+	username = strings.TrimSpace(username)
+	if username == "" {
+		return nil, ErrUserNotFound
+	}
+	reader, ok := s.userRepo.(interface {
+		GetByUsername(context.Context, string) (*User, error)
+	})
+	if !ok {
+		return nil, ErrUserNotFound
+	}
+	user, err := reader.GetByUsername(ctx, username)
+	if err != nil {
+		return nil, err
+	}
+	normalizeLoadedUserTokenVersion(user)
 	return user, nil
 }
 

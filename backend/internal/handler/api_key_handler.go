@@ -7,13 +7,14 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
-	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/luminovaa/neonix-gateway-go/internal/handler/dto"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/pagination"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/response"
+	middleware2 "github.com/luminovaa/neonix-gateway-go/internal/server/middleware"
+	"github.com/luminovaa/neonix-gateway-go/internal/service"
 
 	"github.com/gin-gonic/gin"
 )
@@ -21,12 +22,23 @@ import (
 // APIKeyHandler handles API key-related requests
 type APIKeyHandler struct {
 	apiKeyService *service.APIKeyService
+	usageService  *service.UsageService
+	compatMu      sync.Mutex
 }
 
 // NewAPIKeyHandler creates a new APIKeyHandler
 func NewAPIKeyHandler(apiKeyService *service.APIKeyService) *APIKeyHandler {
 	return &APIKeyHandler{
 		apiKeyService: apiKeyService,
+	}
+}
+
+// SetUsageService attaches the aggregate usage reader used by the direct
+// Neonix compatibility endpoints. Keeping this optional preserves the small
+// constructor used by existing handler unit tests.
+func (h *APIKeyHandler) SetUsageService(usageService *service.UsageService) {
+	if h != nil {
+		h.usageService = usageService
 	}
 }
 

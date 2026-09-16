@@ -9,10 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
-	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
+	"github.com/luminovaa/neonix-gateway-go/internal/config"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/tlsfingerprint"
+	"github.com/luminovaa/neonix-gateway-go/internal/service"
 	"github.com/stretchr/testify/require"
 )
 
@@ -30,9 +30,13 @@ func (s *availableModelsAdminService) GetAccount(_ context.Context, id int64) (*
 }
 
 func setupAvailableModelsRouter(adminSvc service.AdminService) *gin.Engine {
+	return setupAvailableModelsRouterWithTestService(adminSvc, nil)
+}
+
+func setupAvailableModelsRouterWithTestService(adminSvc service.AdminService, accountTestSvc *service.AccountTestService) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	handler := NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	handler := NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, nil, nil, accountTestSvc, nil, nil, nil, nil, nil)
 	router.GET("/api/v1/admin/accounts/:id/models", handler.GetAvailableModels)
 	return router
 }
@@ -63,6 +67,7 @@ func setupSyncUpstreamModelsRouter(adminSvc service.AdminService, upstream servi
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	accountTestSvc := service.NewAccountTestService(
+		nil,
 		nil,
 		nil,
 		nil,
@@ -147,6 +152,95 @@ func TestAccountHandlerGetAvailableModels_GrokDefaultsToXAIModelsWithoutMapping(
 	}
 	require.Contains(t, ids, "grok-4.3")
 	require.Contains(t, ids, "grok-build-0.1")
+}
+
+func TestAccountHandlerGetAvailableModels_KiroUsesLiveCatalog(t *testing.T) {
+	svc := &availableModelsAdminService{
+		stubAdminService: newStubAdminService(),
+		account: service.Account{
+			ID: 47, Name: "kiro", Platform: service.PlatformKiro, Type: service.AccountTypeOAuth, Status: service.StatusActive, Concurrency: 1,
+			Credentials: map[string]any{"accessToken": "secret", "model_mapping": map[string]any{"fallback": "FALLBACK"}},
+		},
+	}
+	upstream := &syncUpstreamHTTPUpstream{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(strings.NewReader(`{"models":[{"modelId":"KIRO_LIVE_MODEL","modelName":"Live"}]}`)),
+	}}
+	kiroGateway := service.NewKiroGatewayService(service.NewKiroTokenProvider(nil, upstream), upstream)
+	accountTestSvc := service.NewAccountTestService(nil, nil, nil, nil, nil, kiroGateway, upstream, nil, nil)
+	router := setupAvailableModelsRouterWithTestService(svc, accountTestSvc)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts/47/models", nil)
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var resp struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Len(t, resp.Data, 1)
+	require.Equal(t, "KIRO_LIVE_MODEL", resp.Data[0].ID)
+}
+
+func TestAccountHandlerGetAvailableModels_KiroFallsBackToMapping(t *testing.T) {
+	svc := &availableModelsAdminService{
+		stubAdminService: newStubAdminService(),
+		account: service.Account{
+			ID: 48, Name: "kiro", Platform: service.PlatformKiro, Type: service.AccountTypeOAuth, Status: service.StatusActive, Concurrency: 1,
+			Credentials: map[string]any{"accessToken": "secret", "model_mapping": map[string]any{"public-b": "NATIVE_B", "public-a": "NATIVE_A"}},
+		},
+	}
+	upstream := &syncUpstreamHTTPUpstream{err: context.DeadlineExceeded}
+	kiroGateway := service.NewKiroGatewayService(service.NewKiroTokenProvider(nil, upstream), upstream)
+	accountTestSvc := service.NewAccountTestService(nil, nil, nil, nil, nil, kiroGateway, upstream, nil, nil)
+	router := setupAvailableModelsRouterWithTestService(svc, accountTestSvc)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts/48/models", nil)
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var resp struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, []string{"public-a", "public-b"}, []string{resp.Data[0].ID, resp.Data[1].ID})
+}
+
+func TestAccountHandlerGetAvailableModels_CodeBuddyChinaUsesCuratedCatalog(t *testing.T) {
+	svc := &availableModelsAdminService{
+		stubAdminService: newStubAdminService(),
+		account: service.Account{
+			ID: 49, Name: "codebuddy-china", Platform: service.PlatformCodeBuddyChina, Type: service.AccountTypeAPIKey, Status: service.StatusActive, Concurrency: 1,
+			Credentials: map[string]any{"apiKey": "secret"},
+		},
+	}
+	accountTestSvc := service.NewAccountTestService(nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	router := setupAvailableModelsRouterWithTestService(svc, accountTestSvc)
+
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts/49/models", nil)
+	router.ServeHTTP(recorder, req)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var responseBody struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &responseBody))
+	ids := make([]string, 0, len(responseBody.Data))
+	for _, model := range responseBody.Data {
+		ids = append(ids, model.ID)
+		require.True(t, strings.HasPrefix(model.ID, "cbc/"))
+	}
+	require.Contains(t, ids, "cbc/deepseek-v3")
+	require.Contains(t, ids, "cbc/glm-5v-turbo")
 }
 
 func TestAccountHandlerGetAvailableModels_OpenAIOAuthUsesExplicitModelMapping(t *testing.T) {

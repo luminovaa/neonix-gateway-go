@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
+	"github.com/luminovaa/neonix-gateway-go/internal/server/middleware"
 	"github.com/gin-gonic/gin"
 )
 

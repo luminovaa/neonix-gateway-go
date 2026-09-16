@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	infraerrors "github.com/luminovaa/neonix-gateway-go/internal/pkg/errors"
 )
 
 const (
@@ -36,8 +36,10 @@ const (
 	// DefaultUserAgentVersion 是未通过环境变量或后台设置覆盖时使用的默认版本号。
 	DefaultUserAgentVersion = "2.9.1"
 
-	// 固定的 redirect_uri（用户需手动复制 code）
-	RedirectURI = "http://localhost:8085/callback"
+	// Fixed redirect URI used by the Neonix callback-paste flow. The browser
+	// may fail to render the localhost page on a remote deployment; the
+	// operator copies the full URL from the address bar instead.
+	RedirectURI = "http://localhost:8080/callback"
 
 	// OAuth scopes
 	Scopes = "https://www.googleapis.com/auth/cloud-platform " +

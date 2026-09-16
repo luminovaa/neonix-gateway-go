@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/timezone"
 	"github.com/stretchr/testify/require"
 )
 
