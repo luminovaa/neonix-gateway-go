@@ -309,7 +309,8 @@ func NewUserService(userRepo UserRepository, settingRepo SettingRepository, auth
 	}
 }
 
-// GetFirstAdmin 获取首个管理员用户（用于 Admin API Key 认证）
+// GetFirstAdmin returns the active local operator. The legacy name is retained
+// while the inherited role column is removed in a later schema migration.
 func (s *UserService) GetFirstAdmin(ctx context.Context) (*User, error) {
 	admin, err := s.userRepo.GetFirstAdmin(ctx)
 	if err != nil {

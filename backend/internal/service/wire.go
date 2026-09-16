@@ -91,6 +91,20 @@ func ProvideAuthService(
 	return svc
 }
 
+// ProvideOperatorAuthService builds only the authentication capabilities used
+// by the private Neonix operator session. Public registration, promo,
+// affiliate, captcha, and default-subscription dependencies stay outside the
+// production graph.
+func ProvideOperatorAuthService(
+	userRepo UserRepository,
+	refreshTokenCache RefreshTokenCache,
+	cfg *config.Config,
+) *AuthService {
+	return NewAuthService(
+		nil, userRepo, nil, refreshTokenCache, cfg, nil, nil, nil, nil, nil, nil, nil, nil,
+	)
+}
+
 // ProvideOAuthRefreshAPI creates OAuthRefreshAPI with the default lock TTL.
 func ProvideOAuthRefreshAPI(accountRepo AccountRepository, tokenCache GeminiTokenCache) *OAuthRefreshAPI {
 	return NewOAuthRefreshAPI(accountRepo, tokenCache)
@@ -125,6 +139,7 @@ func ProvideTokenRefreshService(
 	geminiOAuthService *GeminiOAuthService,
 	antigravityOAuthService *AntigravityOAuthService,
 	grokOAuthService *GrokOAuthService,
+	codeBuddyTokenProvider *CodeBuddyTokenProvider,
 	cacheInvalidator TokenCacheInvalidator,
 	schedulerCache SchedulerCache,
 	cfg *config.Config,
@@ -135,6 +150,9 @@ func ProvideTokenRefreshService(
 	runtimeBlocker AccountRuntimeBlocker,
 ) *TokenRefreshService {
 	svc := NewTokenRefreshService(accountRepo, oauthService, openaiOAuthService, geminiOAuthService, antigravityOAuthService, cacheInvalidator, schedulerCache, cfg, tempUnschedCache, grokOAuthService)
+	codeBuddyRefresher := NewCodeBuddyTokenRefresher(codeBuddyTokenProvider)
+	svc.registrations = append(svc.registrations, tokenRefreshRegistration{platform: PlatformCodeBuddy, refresher: codeBuddyRefresher, executor: codeBuddyRefresher})
+	svc.registrations = append(svc.registrations, tokenRefreshRegistration{platform: PlatformWorkBuddy, refresher: codeBuddyRefresher, executor: codeBuddyRefresher})
 	// 注入 OpenAI privacy opt-out 依赖
 	svc.SetPrivacyDeps(privacyClientFactory, proxyRepo)
 	// 注入统一 OAuth 刷新 API（消除 TokenRefreshService 与 TokenProvider 之间的竞争条件）
@@ -249,6 +267,10 @@ func ProvideAccountTestService(
 	claudeTokenProvider *ClaudeTokenProvider,
 	grokTokenProvider *GrokTokenProvider,
 	antigravityGatewayService *AntigravityGatewayService,
+	kiroGatewayService *KiroGatewayService,
+	qoderGatewayService *QoderGatewayService,
+	codeBuddyGatewayService *CodeBuddyGatewayService,
+	codeBuddyChinaGatewayService *CodeBuddyChinaGatewayService,
 	httpUpstream HTTPUpstream,
 	cfg *config.Config,
 	tlsFPProfileService *TLSFingerprintProfileService,
@@ -262,6 +284,7 @@ func ProvideAccountTestService(
 		claudeTokenProvider,
 		grokTokenProvider,
 		antigravityGatewayService,
+		kiroGatewayService,
 		httpUpstream,
 		cfg,
 		tlsFPProfileService,
@@ -270,6 +293,9 @@ func ProvideAccountTestService(
 	service.SetOpenAIGatewayService(openAIGatewayService)
 	service.SetSettingService(settingService)
 	service.SetPluginManager(pluginManager)
+	service.SetQoderGatewayService(qoderGatewayService)
+	service.SetCodeBuddyGatewayService(codeBuddyGatewayService)
+	service.SetCodeBuddyChinaGatewayService(codeBuddyChinaGatewayService)
 	return service
 }
 
@@ -818,10 +844,43 @@ func ProvideAPIKeyService(
 	return svc
 }
 
+// ProvideNeonixAdminService wires the account and group operations exposed by
+// the private operator control plane. Member balance, redeem, subscription,
+// and affiliate collaborators are intentionally omitted.
+func ProvideNeonixAdminService(
+	cfg *config.Config,
+	userRepo UserRepository,
+	groupRepo AdminGroupRepository,
+	accountRepo AdminAccountRepository,
+	proxyRepo ProxyRepository,
+	apiKeyRepo APIKeyRepository,
+	userGroupRateRepo UserGroupRateRepository,
+	userRPMCache UserRPMCache,
+	billingCacheService *BillingCacheService,
+	proxyProber ProxyExitInfoProber,
+	proxyLatencyCache ProxyLatencyCache,
+	authCacheInvalidator APIKeyAuthCacheInvalidator,
+	entClient *dbent.Client,
+	settingService *SettingService,
+	privacyClientFactory PrivacyClientFactory,
+	runtimeBlocker AccountRuntimeBlocker,
+	compositeRouteRepo CompositeModelRouteRepository,
+	compositeResolver *CompositeRouteResolver,
+	channelCacheInvalidator ChannelCacheInvalidator,
+) AdminService {
+	return NewAdminService(
+		cfg, userRepo, groupRepo, accountRepo, proxyRepo, apiKeyRepo, nil,
+		userGroupRateRepo, userRPMCache, billingCacheService, proxyProber,
+		proxyLatencyCache, authCacheInvalidator, entClient, settingService, nil,
+		nil, privacyClientFactory, runtimeBlocker, nil, compositeRouteRepo,
+		compositeResolver, channelCacheInvalidator,
+	)
+}
+
 // ProviderSet is the Wire provider set for all services
 var ProviderSet = wire.NewSet(
 	// Core services
-	ProvideAuthService,
+	ProvideOperatorAuthService,
 	NewPasskeyService,
 	NewUserService,
 	ProvideAPIKeyService,
@@ -839,7 +898,7 @@ var ProviderSet = wire.NewSet(
 	NewBillingService,
 	ProvideBillingCacheService,
 	NewAnnouncementService,
-	NewAdminService,
+	ProvideNeonixAdminService,
 	NewGatewayService,
 	NewOpenAIGatewayService,
 	ProvideImageStorageSettingService,
@@ -872,6 +931,14 @@ var ProviderSet = wire.NewSet(
 	ProvideCNProviderBalanceService,
 	ProvideCNProviderBalanceCheckService,
 	ProvideClaudeTokenProvider,
+	NewKiroTokenProvider,
+	NewKiroGatewayService,
+	NewQoderTokenProvider,
+	NewQoderGatewayService,
+	NewCodeBuddyTokenProvider,
+	NewCodeBuddyGatewayService,
+	NewCodeBuddyChinaGatewayService,
+	NewCodeBuddyDeviceLoginService,
 	NewAntigravityGatewayService,
 	ProvideRateLimitService,
 	ProvideAccountUsageService,
@@ -912,7 +979,6 @@ var ProviderSet = wire.NewSet(
 	ProvideAccountExpiryService,
 	ProvideOpenAICodexVersionSyncService,
 	ProvideProxyExpiryService,
-	ProvideSubscriptionExpiryService,
 	ProvideTimingWheelService,
 	ProvideDashboardAggregationService,
 	ProvideUsageCleanupService,
@@ -940,7 +1006,6 @@ var ProviderSet = wire.NewSet(
 	NewAffiliateService,
 	ProvidePaymentConfigService,
 	ProvidePaymentService,
-	ProvidePaymentOrderExpiryService,
 	ProvideBalanceNotifyService,
 	ProvideChannelMonitorService,
 	ProvideChannelMonitorRunner,

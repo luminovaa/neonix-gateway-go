@@ -9,9 +9,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/gin-gonic/gin"
 	"github.com/luminovaa/neonix-gateway-go/internal/config"
 	"github.com/luminovaa/neonix-gateway-go/internal/service"
-	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
 
@@ -36,7 +36,7 @@ func TestAPIKeyAuthInvalidAbuseReturns429BeforeRepository(t *testing.T) {
 	r := gin.New()
 	var reason IngressRejectReason
 	r.Use(func(c *gin.Context) { c.Next(); reason, _ = GetIngressRejectReason(c) })
-	r.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(svc, nil, cfg)))
+	r.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(svc, cfg)))
 	r.POST("/v1/messages", func(c *gin.Context) { c.Status(http.StatusOK) })
 
 	requests := []*http.Request{
@@ -109,7 +109,7 @@ func TestInvalidAuthAbuseDoesNotCountValidOrOperationalFailures(t *testing.T) {
 	cfg := invalidAuthAbuseTestConfig(10)
 	svc := service.NewAPIKeyService(repo, nil, nil, nil, nil, nil, cfg)
 	r := gin.New()
-	r.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(svc, nil, cfg)))
+	r.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(svc, cfg)))
 	r.POST("/t", func(c *gin.Context) { c.Status(http.StatusOK) })
 
 	for _, tc := range []struct {

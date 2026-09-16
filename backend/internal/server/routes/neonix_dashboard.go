@@ -39,17 +39,15 @@ type dashboardSeries struct {
 	dashboardAggregate
 }
 
-type dashboardUser struct {
-	Rank           int    `json:"rank,omitempty"`
-	UserID         string `json:"userId,omitempty"`
-	Username       string `json:"username,omitempty"`
-	DisplayName    string `json:"displayName,omitempty"`
-	IsMe           bool   `json:"isMe"`
-	Role           string `json:"role,omitempty"`
-	LastActivityAt int64  `json:"lastActivityAt,omitempty"`
-	dashboardAggregate
-	SuccessRate float64 `json:"successRate,omitempty"`
-	TPS         float64 `json:"tps,omitempty"`
+type publicStatsSummary struct {
+	TotalTokens   int64 `json:"totalTokens"`
+	TotalRequests int64 `json:"totalRequests"`
+}
+
+type publicModelStats struct {
+	Model         string `json:"model"`
+	TotalTokens   int64  `json:"totalTokens"`
+	TotalRequests int64  `json:"totalRequests"`
 }
 
 func dashboardPeriod(value string, now time.Time) (string, time.Time, int) {
@@ -147,32 +145,6 @@ func (d *neonixDashboard) models(ctx context.Context, start *time.Time, limit in
 	return out, rows.Err()
 }
 
-func (d *neonixDashboard) users(ctx context.Context, start *time.Time, limit int) ([]dashboardUser, error) {
-	rows, err := d.db.QueryContext(ctx, dashboardUsersSQL, start, limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := make([]dashboardUser, 0)
-	for rows.Next() {
-		var u dashboardUser
-		if err := rows.Scan(&u.UserID, &u.Username, &u.Role, &u.SuccessRequests, &u.FailedRequests, &u.InputTokens, &u.OutputTokens, &u.TotalCredits, &u.TotalResponseTime, &u.LastActivityAt); err != nil {
-			return nil, err
-		}
-		u.TotalRequests = u.SuccessRequests + u.FailedRequests
-		u.DisplayName = u.Username
-		if u.DisplayName == "" {
-			u.DisplayName = "Operator"
-		}
-		u.IsMe = true
-		u.SuccessRate = percentage(u.SuccessRequests, u.TotalRequests)
-		u.TPS = throughput(u.OutputTokens, u.TotalResponseTime)
-		u.Rank = len(out) + 1
-		out = append(out, u)
-	}
-	return out, rows.Err()
-}
-
 func (d *neonixDashboard) series(ctx context.Context, period string, start time.Time) ([]dashboardSeries, error) {
 	query := dashboardDailySQL
 	if period == "today" {
@@ -197,9 +169,41 @@ func (d *neonixDashboard) series(ctx context.Context, period string, start time.
 	return out, rows.Err()
 }
 
-func (d *neonixDashboard) me(c *gin.Context)         { d.respondDashboard(c, false) }
-func (d *neonixDashboard) adminUsers(c *gin.Context) { d.respondDashboard(c, true) }
-func (d *neonixDashboard) respondDashboard(c *gin.Context, includeUsers bool) {
+func (d *neonixDashboard) me(c *gin.Context) { d.respondDashboard(c) }
+
+func (d *neonixDashboard) publicStats(c *gin.Context) {
+	if d == nil || d.db == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Public stats are unavailable", "errorCode": "PUBLIC_STATS_UNAVAILABLE"})
+		return
+	}
+	var summary publicStatsSummary
+	if err := d.db.QueryRowContext(c.Request.Context(), publicStatsSummarySQL).Scan(&summary.TotalRequests, &summary.TotalTokens); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load public stats", "errorCode": "PUBLIC_STATS_LOAD_FAILED"})
+		return
+	}
+	rows, err := d.db.QueryContext(c.Request.Context(), publicStatsModelsSQL, 5)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load public stats", "errorCode": "PUBLIC_STATS_LOAD_FAILED"})
+		return
+	}
+	defer rows.Close()
+	models := make([]publicModelStats, 0, 5)
+	for rows.Next() {
+		var model publicModelStats
+		if err := rows.Scan(&model.Model, &model.TotalRequests, &model.TotalTokens); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load public stats", "errorCode": "PUBLIC_STATS_LOAD_FAILED"})
+			return
+		}
+		models = append(models, model)
+	}
+	if err := rows.Err(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load public stats", "errorCode": "PUBLIC_STATS_LOAD_FAILED"})
+		return
+	}
+	c.Header("Cache-Control", "public, max-age=60")
+	c.JSON(http.StatusOK, gin.H{"summary": summary, "popularModels": models})
+}
+func (d *neonixDashboard) respondDashboard(c *gin.Context) {
 	if d == nil || d.db == nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Dashboard is unavailable", "errorCode": "DASHBOARD_UNAVAILABLE"})
 		return
@@ -209,14 +213,6 @@ func (d *neonixDashboard) respondDashboard(c *gin.Context, includeUsers bool) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load dashboard", "errorCode": "DASHBOARD_LOAD_FAILED"})
 		return
-	}
-	if includeUsers {
-		users, err := d.users(c.Request.Context(), &start, 10)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load dashboard", "errorCode": "DASHBOARD_LOAD_FAILED"})
-			return
-		}
-		payload["users"] = users
 	}
 	c.JSON(http.StatusOK, payload)
 }
@@ -234,17 +230,12 @@ func (d *neonixDashboard) leaderboard(c *gin.Context) {
 	if limit > 100 {
 		limit = 100
 	}
-	users, err := d.users(c.Request.Context(), start, limit)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load leaderboard", "errorCode": "LEADERBOARD_LOAD_FAILED"})
-		return
-	}
 	models, err := d.models(c.Request.Context(), start, limit)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load leaderboard", "errorCode": "LEADERBOARD_LOAD_FAILED"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"period": period, "limit": limit, "users": users, "models": models})
+	c.JSON(http.StatusOK, gin.H{"period": period, "limit": limit, "models": models})
 }
 
 func fillDashboardSeries(period string, start time.Time, slots int, rows []dashboardSeries) []dashboardSeries {
@@ -291,7 +282,8 @@ func throughput(tokens, duration int64) float64 {
 }
 
 const dashboardSummarySQL = `SELECT (SELECT COUNT(*) FROM usage_logs WHERE created_at >= $1),(SELECT COUNT(*) FROM ops_error_logs WHERE created_at >= $1 AND COALESCE(status_code,0)>=400),(SELECT COALESCE(SUM(input_tokens),0) FROM usage_logs WHERE created_at >= $1),(SELECT COALESCE(SUM(output_tokens),0) FROM usage_logs WHERE created_at >= $1),(SELECT COALESCE(SUM(cache_read_tokens),0) FROM usage_logs WHERE created_at >= $1),(SELECT COALESCE(SUM(actual_cost),0) FROM usage_logs WHERE created_at >= $1),(SELECT COALESCE(SUM(duration_ms),0) FROM usage_logs WHERE created_at >= $1)`
+const publicStatsSummarySQL = `SELECT COUNT(*),COALESCE(SUM(COALESCE(input_tokens,0) + COALESCE(output_tokens,0) + COALESCE(cache_read_tokens,0)),0) FROM usage_logs`
+const publicStatsModelsSQL = `SELECT COALESCE(requested_model,model,'unknown') model,COUNT(*),COALESCE(SUM(COALESCE(input_tokens,0) + COALESCE(output_tokens,0) + COALESCE(cache_read_tokens,0)),0) tokens FROM usage_logs GROUP BY 1 ORDER BY tokens DESC,model LIMIT $1`
 const dashboardModelsSQL = `WITH combined AS (SELECT COALESCE(requested_model,model) model,1 success,0 failed,input_tokens::bigint,output_tokens::bigint,actual_cost::double precision credits,COALESCE(duration_ms,0)::bigint duration FROM usage_logs WHERE ($1::timestamptz IS NULL OR created_at >= $1) UNION ALL SELECT COALESCE(requested_model,model,'unknown'),0,1,0::bigint,0::bigint,0::double precision,COALESCE(duration_ms,0)::bigint FROM ops_error_logs WHERE COALESCE(status_code,0)>=400 AND ($1::timestamptz IS NULL OR created_at >= $1)) SELECT model,SUM(success),SUM(failed),SUM(input_tokens),SUM(output_tokens),SUM(credits),SUM(duration) FROM combined GROUP BY model ORDER BY SUM(input_tokens+output_tokens) DESC,model LIMIT $2`
-const dashboardUsersSQL = `WITH combined AS (SELECT user_id,1 success,0 failed,input_tokens::bigint,output_tokens::bigint,actual_cost::double precision credits,COALESCE(duration_ms,0)::bigint duration,created_at FROM usage_logs WHERE ($1::timestamptz IS NULL OR created_at >= $1) UNION ALL SELECT user_id,0,1,0::bigint,0::bigint,0::double precision,COALESCE(duration_ms,0)::bigint,created_at FROM ops_error_logs WHERE COALESCE(status_code,0)>=400 AND ($1::timestamptz IS NULL OR created_at >= $1)), agg AS (SELECT user_id,SUM(success) success,SUM(failed) failed,SUM(input_tokens) input_tokens,SUM(output_tokens) output_tokens,SUM(credits) credits,SUM(duration) duration,MAX(created_at) last_activity FROM combined GROUP BY user_id) SELECT COALESCE(agg.user_id,0)::text,COALESCE(NULLIF(u.username,''),u.email,'Operator'),COALESCE(u.role,'admin'),agg.success,agg.failed,agg.input_tokens,agg.output_tokens,agg.credits,agg.duration,(EXTRACT(EPOCH FROM agg.last_activity)*1000)::bigint FROM agg LEFT JOIN users u ON u.id=agg.user_id ORDER BY agg.input_tokens+agg.output_tokens DESC LIMIT $2`
 const dashboardHourlySQL = `WITH buckets AS (SELECT date_trunc('hour',created_at) bucket,COUNT(*) success,0 failed,SUM(input_tokens)::bigint input_tokens,SUM(output_tokens)::bigint output_tokens,SUM(actual_cost)::double precision credits FROM usage_logs WHERE created_at >= $1 GROUP BY 1 UNION ALL SELECT date_trunc('hour',created_at),0,COUNT(*),0,0,0 FROM ops_error_logs WHERE created_at >= $1 AND COALESCE(status_code,0)>=400 GROUP BY 1) SELECT bucket,SUM(success),SUM(failed),SUM(input_tokens),SUM(output_tokens),SUM(credits) FROM buckets GROUP BY bucket ORDER BY bucket`
 const dashboardDailySQL = `WITH buckets AS (SELECT date_trunc('day',created_at) bucket,COUNT(*) success,0 failed,SUM(input_tokens)::bigint input_tokens,SUM(output_tokens)::bigint output_tokens,SUM(actual_cost)::double precision credits FROM usage_logs WHERE created_at >= $1 GROUP BY 1 UNION ALL SELECT date_trunc('day',created_at),0,COUNT(*),0,0,0 FROM ops_error_logs WHERE created_at >= $1 AND COALESCE(status_code,0)>=400 GROUP BY 1) SELECT bucket,SUM(success),SUM(failed),SUM(input_tokens),SUM(output_tokens),SUM(credits) FROM buckets GROUP BY bucket ORDER BY bucket`

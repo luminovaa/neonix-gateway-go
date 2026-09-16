@@ -10,12 +10,12 @@ import (
 	"strings"
 	"time"
 
+	coderws "github.com/coder/websocket"
+	"github.com/gin-gonic/gin"
 	"github.com/luminovaa/neonix-gateway-go/internal/pkg/ip"
 	"github.com/luminovaa/neonix-gateway-go/internal/pkg/logger"
 	middleware2 "github.com/luminovaa/neonix-gateway-go/internal/server/middleware"
 	"github.com/luminovaa/neonix-gateway-go/internal/service"
-	coderws "github.com/coder/websocket"
-	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
 
@@ -248,10 +248,6 @@ func (h *OpenAIGatewayHandler) GrokVoice(c *gin.Context, endpoint string) {
 		account := selection.Account
 		var started bool
 		release, status := h.acquireResponsesAccountSlot(c, apiKey.GroupID, "", selection, false, &started, reqLog)
-		if status == openAISlotAcquireProfitVetoed {
-			failed[account.ID] = struct{}{}
-			continue
-		}
 		if status != openAISlotAcquireOK {
 			// Failed already wrote error response (or transient reject).
 			if status == openAISlotAcquireFailed && len(failed) == 0 {

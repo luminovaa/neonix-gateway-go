@@ -6,342 +6,693 @@
       "method": "GET",
       "path": "/health",
       "auth": "none",
-      "success": {"status": 200, "contentType": "application/json"}
+      "success": {
+        "status": 200,
+        "contentType": "application/json"
+      }
     },
     {
       "name": "readiness",
       "method": "GET",
       "path": "/ready",
       "auth": "none",
-      "success": {"status": 200, "contentType": "application/json"},
-      "failure": {"status": 503, "errorCode": "SERVICE_NOT_READY"}
+      "success": {
+        "status": 200,
+        "contentType": "application/json"
+      },
+      "failure": {
+        "status": 503,
+        "errorCode": "SERVICE_NOT_READY"
+      }
     },
     {
       "name": "api-health",
       "method": "GET",
       "path": "/api/health",
       "auth": "none",
-      "success": {"status": 200, "contentType": "application/json"}
+      "success": {
+        "status": 200,
+        "contentType": "application/json"
+      }
     },
     {
       "name": "operator-login",
       "method": "POST",
       "path": "/api/auth/login",
       "auth": "none",
-      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+      "success": {
+        "status": 200,
+        "contentType": "application/json",
+        "sanitized": true
+      }
     },
     {
       "name": "operator-refresh",
       "method": "POST",
       "path": "/api/auth/refresh",
       "auth": "none",
-      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+      "success": {
+        "status": 200,
+        "contentType": "application/json",
+        "sanitized": true
+      }
     },
     {
       "name": "operator-current-user",
       "method": "GET",
       "path": "/api/auth/me",
       "auth": "operator",
-      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+      "success": {
+        "status": 200,
+        "contentType": "application/json",
+        "sanitized": true
+      }
     },
     {
       "name": "operator-logout",
       "method": "POST",
       "path": "/api/auth/logout",
       "auth": "operator",
-      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+      "success": {
+        "status": 200,
+        "contentType": "application/json",
+        "sanitized": true
+      }
     },
     {
       "name": "accounts-list",
       "method": "GET",
       "path": "/api/accounts",
       "auth": "operator",
-      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+      "success": {
+        "status": 200,
+        "contentType": "application/json",
+        "sanitized": true
+      }
     },
     {
       "name": "api-keys-list",
       "method": "GET",
       "path": "/api/api-keys",
       "auth": "operator",
-      "success": {"status": 200, "contentType": "application/json", "directArray": true, "sanitized": true}
+      "success": {
+        "status": 200,
+        "contentType": "application/json",
+        "directArray": true,
+        "sanitized": true
+      }
     },
     {
       "name": "api-key-default",
       "method": "GET",
       "path": "/api/api-keys/me",
       "auth": "operator",
-      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+      "success": {
+        "status": 200,
+        "contentType": "application/json",
+        "sanitized": true
+      }
     },
     {
       "name": "api-key-create",
       "method": "POST",
       "path": "/api/api-keys",
       "auth": "operator",
-      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+      "success": {
+        "status": 200,
+        "contentType": "application/json",
+        "sanitized": true
+      }
     },
     {
       "name": "api-key-regenerate",
       "method": "POST",
       "path": "/api/api-keys/regenerate",
       "auth": "operator",
-      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+      "success": {
+        "status": 200,
+        "contentType": "application/json",
+        "sanitized": true
+      }
     },
     {
       "name": "api-key-delete",
       "method": "DELETE",
       "path": "/api/api-keys/{id}",
       "auth": "operator",
-      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+      "success": {
+        "status": 200,
+        "contentType": "application/json",
+        "sanitized": true
+      }
     },
     {
       "name": "api-key-usage",
       "method": "GET",
       "path": "/api/api-keys/{id}/usage",
       "auth": "operator",
-      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
-    },
-    {
-      "name": "api-key-access-stats",
-      "method": "GET",
-      "path": "/api/api-keys/{id}/access-stats",
-      "auth": "operator",
-      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+      "success": {
+        "status": 200,
+        "contentType": "application/json",
+        "sanitized": true
+      }
     },
     {
       "name": "settings-list",
       "method": "GET",
       "path": "/api/settings",
       "auth": "operator",
-      "success": {"status": 200, "contentType": "application/json", "directObject": true}
+      "success": {
+        "status": 200,
+        "contentType": "application/json",
+        "directObject": true
+      }
     },
     {
       "name": "settings-get",
       "method": "GET",
       "path": "/api/settings/{key}",
       "auth": "operator",
-      "success": {"status": 200, "contentType": "application/json", "directObject": true}
+      "success": {
+        "status": 200,
+        "contentType": "application/json",
+        "directObject": true
+      }
     },
     {
       "name": "settings-set",
       "method": "PUT",
       "path": "/api/settings/{key}",
       "auth": "operator",
-      "success": {"status": 200, "contentType": "application/json", "directObject": true}
+      "success": {
+        "status": 200,
+        "contentType": "application/json",
+        "directObject": true
+      }
     },
     {
       "name": "settings-set-many",
       "method": "PUT",
       "path": "/api/settings",
       "auth": "operator",
-      "success": {"status": 200, "contentType": "application/json", "directObject": true}
+      "success": {
+        "status": 200,
+        "contentType": "application/json",
+        "directObject": true
+      }
     },
     {
       "name": "codex-oauth-start",
       "method": "POST",
       "path": "/api/accounts/codex/oauth/start",
       "auth": "operator",
-      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+      "success": {
+        "status": 200,
+        "contentType": "application/json",
+        "sanitized": true
+      }
     },
     {
       "name": "codex-oauth-poll",
       "method": "POST",
       "path": "/api/accounts/codex/oauth/poll",
       "auth": "operator",
-      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+      "success": {
+        "status": 200,
+        "contentType": "application/json",
+        "sanitized": true
+      }
     },
     {
       "name": "codex-oauth-cancel",
       "method": "POST",
       "path": "/api/accounts/codex/oauth/cancel",
       "auth": "operator",
-      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+      "success": {
+        "status": 200,
+        "contentType": "application/json",
+        "sanitized": true
+      }
     },
     {
       "name": "grok-oauth-start",
       "method": "POST",
       "path": "/api/accounts/grok/oauth/start",
       "auth": "operator",
-      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+      "success": {
+        "status": 200,
+        "contentType": "application/json",
+        "sanitized": true
+      }
     },
     {
       "name": "grok-oauth-poll",
       "method": "POST",
       "path": "/api/accounts/grok/oauth/poll",
       "auth": "operator",
-      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+      "success": {
+        "status": 200,
+        "contentType": "application/json",
+        "sanitized": true
+      }
     },
     {
       "name": "grok-oauth-cancel",
       "method": "POST",
       "path": "/api/accounts/grok/oauth/cancel",
       "auth": "operator",
-      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+      "success": {
+        "status": 200,
+        "contentType": "application/json",
+        "sanitized": true
+      }
+    },
+    {
+      "name": "kiro-oauth-start",
+      "method": "POST",
+      "path": "/api/accounts/kiro/oauth/start",
+      "auth": "operator",
+      "success": {
+        "status": 200,
+        "contentType": "application/json",
+        "sanitized": true
+      }
+    },
+    {
+      "name": "kiro-oauth-complete",
+      "method": "POST",
+      "path": "/api/accounts/kiro/oauth/complete",
+      "auth": "operator",
+      "success": {
+        "status": 200,
+        "contentType": "application/json",
+        "sanitized": true
+      }
+    },
+    {
+      "name": "kiro-oauth-cancel",
+      "method": "POST",
+      "path": "/api/accounts/kiro/oauth/cancel",
+      "auth": "operator",
+      "success": {
+        "status": 200,
+        "contentType": "application/json",
+        "sanitized": true
+      }
     },
     {
       "name": "m365-oauth-start",
       "method": "POST",
       "path": "/api/accounts/m365/oauth/start",
       "auth": "operator",
-      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+      "success": {
+        "status": 200,
+        "contentType": "application/json",
+        "sanitized": true
+      }
     },
     {
       "name": "m365-oauth-complete",
       "method": "POST",
       "path": "/api/accounts/m365/oauth/complete",
       "auth": "operator",
-      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+      "success": {
+        "status": 200,
+        "contentType": "application/json",
+        "sanitized": true
+      }
     },
     {
       "name": "m365-oauth-cancel",
       "method": "POST",
       "path": "/api/accounts/m365/oauth/cancel",
       "auth": "operator",
-      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+      "success": {
+        "status": 200,
+        "contentType": "application/json",
+        "sanitized": true
+      }
     },
     {
       "name": "mailbox-accounts",
       "method": "GET",
       "path": "/api/mailbox/accounts",
       "auth": "operator",
-      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+      "success": {
+        "status": 200,
+        "contentType": "application/json",
+        "sanitized": true
+      }
     },
     {
       "name": "mailbox-poll",
       "method": "POST",
       "path": "/api/mailbox/poll",
       "auth": "operator",
-      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+      "success": {
+        "status": 200,
+        "contentType": "application/json",
+        "sanitized": true
+      }
     },
     {
       "name": "mailbox-oauth-start",
       "method": "POST",
       "path": "/api/mailbox/oauth/start",
       "auth": "operator",
-      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+      "success": {
+        "status": 200,
+        "contentType": "application/json",
+        "sanitized": true
+      }
     },
     {
       "name": "mailbox-oauth-complete",
       "method": "POST",
       "path": "/api/mailbox/oauth/complete",
       "auth": "operator",
-      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+      "success": {
+        "status": 200,
+        "contentType": "application/json",
+        "sanitized": true
+      }
     },
     {
       "name": "mailbox-oauth-cancel",
       "method": "POST",
       "path": "/api/mailbox/oauth/cancel",
       "auth": "operator",
-      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+      "success": {
+        "status": 200,
+        "contentType": "application/json",
+        "sanitized": true
+      }
+    },
+    {
+      "name": "register-start",
+      "method": "POST",
+      "path": "/api/register/start",
+      "auth": "operator",
+      "success": {
+        "status": 200,
+        "contentType": "application/json",
+        "sanitized": true
+      }
+    },
+    {
+      "name": "register-grok-expired-count",
+      "method": "GET",
+      "path": "/api/register/grok-expired-count",
+      "auth": "operator",
+      "success": {
+        "status": 200,
+        "contentType": "application/json",
+        "sanitized": true
+      }
+    },
+    {
+      "name": "register-qoder-injectable-count",
+      "method": "GET",
+      "path": "/api/register/qoder-injectable-count",
+      "auth": "operator",
+      "success": {
+        "status": 200,
+        "contentType": "application/json",
+        "sanitized": true
+      }
+    },
+    {
+      "name": "register-github-accounts",
+      "method": "GET",
+      "path": "/api/register/github-accounts",
+      "auth": "operator",
+      "success": {
+        "status": 200,
+        "contentType": "application/json",
+        "sanitized": true
+      }
+    },
+    {
+      "name": "register-status",
+      "method": "GET",
+      "path": "/api/register/status",
+      "auth": "operator",
+      "success": {
+        "status": 200,
+        "contentType": "application/json",
+        "sanitized": true
+      }
+    },
+    {
+      "name": "register-logs",
+      "method": "GET",
+      "path": "/api/register/logs",
+      "auth": "operator",
+      "success": {
+        "status": 200,
+        "contentType": "application/json",
+        "sanitized": true
+      }
+    },
+    {
+      "name": "register-cancel",
+      "method": "POST",
+      "path": "/api/register/cancel",
+      "auth": "operator",
+      "success": {
+        "status": 200,
+        "contentType": "application/json",
+        "sanitized": true
+      }
+    },
+    {
+      "name": "register-bfs-lockout",
+      "method": "GET",
+      "path": "/api/register/bfs-lockout",
+      "auth": "operator",
+      "success": {
+        "status": 200,
+        "contentType": "application/json",
+        "sanitized": true
+      }
+    },
+    {
+      "name": "register-python-status",
+      "method": "GET",
+      "path": "/api/register/python-status",
+      "auth": "operator",
+      "success": {
+        "status": 200,
+        "contentType": "application/json",
+        "sanitized": true
+      }
+    },
+    {
+      "name": "register-result-callback",
+      "method": "POST",
+      "path": "/api/register/result",
+      "auth": "internal",
+      "success": {
+        "status": 200,
+        "contentType": "application/json",
+        "sanitized": true
+      }
+    },
+    {
+      "name": "register-failure-callback",
+      "method": "POST",
+      "path": "/api/register/failure",
+      "auth": "internal",
+      "success": {
+        "status": 200,
+        "contentType": "application/json",
+        "sanitized": true
+      }
     },
     {
       "name": "account-check",
       "method": "POST",
       "path": "/api/accounts/{id}/check",
       "auth": "operator",
-      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+      "success": {
+        "status": 200,
+        "contentType": "application/json",
+        "sanitized": true
+      }
     },
     {
       "name": "account-warmup",
       "method": "POST",
       "path": "/api/accounts/{id}/warmup",
       "auth": "operator",
-      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+      "success": {
+        "status": 200,
+        "contentType": "application/json",
+        "sanitized": true
+      }
     },
     {
       "name": "proxy-resilience",
       "method": "GET",
       "path": "/api/proxy/resilience",
       "auth": "operator",
-      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+      "success": {
+        "status": 200,
+        "contentType": "application/json",
+        "sanitized": true
+      }
     },
     {
       "name": "proxy-model-lock-clear",
       "method": "POST",
       "path": "/api/proxy/resilience/model-locks/clear",
       "auth": "operator",
-      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+      "success": {
+        "status": 200,
+        "contentType": "application/json",
+        "sanitized": true
+      }
     },
     {
       "name": "proxy-status",
       "method": "GET",
       "path": "/api/proxy/status",
       "auth": "operator",
-      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+      "success": {
+        "status": 200,
+        "contentType": "application/json",
+        "sanitized": true
+      }
     },
     {
       "name": "proxy-config-get",
       "method": "GET",
       "path": "/api/proxy/config",
       "auth": "operator",
-      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+      "success": {
+        "status": 200,
+        "contentType": "application/json",
+        "sanitized": true
+      }
     },
     {
       "name": "proxy-config-update",
       "method": "PUT",
       "path": "/api/proxy/config",
       "auth": "operator",
-      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+      "success": {
+        "status": 200,
+        "contentType": "application/json",
+        "sanitized": true
+      }
     },
     {
       "name": "proxy-start",
       "method": "POST",
       "path": "/api/proxy/start",
       "auth": "operator",
-      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+      "success": {
+        "status": 200,
+        "contentType": "application/json",
+        "sanitized": true
+      }
     },
     {
       "name": "proxy-stop",
       "method": "POST",
       "path": "/api/proxy/stop",
       "auth": "operator",
-      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+      "success": {
+        "status": 200,
+        "contentType": "application/json",
+        "sanitized": true
+      }
     },
     {
       "name": "proxy-stats",
       "method": "GET",
       "path": "/api/proxy/stats",
       "auth": "operator",
-      "success": {"status": 200, "contentType": "application/json", "sanitized": true}
+      "success": {
+        "status": 200,
+        "contentType": "application/json",
+        "sanitized": true
+      }
     },
     {
       "name": "models-list",
       "method": "GET",
       "path": "/v1/models",
       "auth": "gateway",
-      "success": {"status": 200, "contentType": "application/json"}
+      "success": {
+        "status": 200,
+        "contentType": "application/json"
+      }
     },
     {
       "name": "openai-chat-stream",
       "method": "POST",
       "path": "/v1/chat/completions",
       "auth": "gateway",
-      "success": {"status": 200, "contentType": "text/event-stream", "streaming": true, "cancellable": true}
+      "success": {
+        "status": 200,
+        "contentType": "text/event-stream",
+        "streaming": true,
+        "cancellable": true
+      }
     },
     {
       "name": "openai-responses-stream",
       "method": "POST",
       "path": "/v1/responses",
       "auth": "gateway",
-      "success": {"status": 200, "contentType": "text/event-stream", "streaming": true, "cancellable": true}
+      "success": {
+        "status": 200,
+        "contentType": "text/event-stream",
+        "streaming": true,
+        "cancellable": true
+      }
     },
     {
       "name": "anthropic-messages-stream",
       "method": "POST",
       "path": "/v1/messages",
       "auth": "gateway",
-      "success": {"status": 200, "contentType": "text/event-stream", "streaming": true, "cancellable": true}
+      "success": {
+        "status": 200,
+        "contentType": "text/event-stream",
+        "streaming": true,
+        "cancellable": true
+      }
     },
     {
       "name": "gemini-native",
       "method": "POST",
       "path": "/v1beta/models/{model}:generateContent",
       "auth": "gateway",
-      "success": {"status": 200, "contentType": "application/json"}
+      "success": {
+        "status": 200,
+        "contentType": "application/json"
+      }
     }
   ],
   "error": {
     "contentType": "application/json",
-    "requiredFields": ["error", "errorCode"],
-    "secretFieldsForbidden": ["accessToken", "refreshToken", "idToken", "authorizationCode", "callbackUrl", "verifier", "deviceAuthId", "deviceCode", "codeVerifier", "codeChallenge"]
+    "requiredFields": [
+      "error",
+      "errorCode"
+    ],
+    "secretFieldsForbidden": [
+      "accessToken",
+      "refreshToken",
+      "idToken",
+      "authorizationCode",
+      "callbackUrl",
+      "verifier",
+      "deviceAuthId",
+      "deviceCode",
+      "codeVerifier",
+      "codeChallenge"
+    ]
   }
 }

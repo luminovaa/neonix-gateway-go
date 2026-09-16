@@ -94,3 +94,19 @@ func TestRedactCredentials_AllKnownSensitiveKeys(t *testing.T) {
 		require.True(t, status["has_"+k], "key %s 应在 status 中标记为已配置", k)
 	}
 }
+
+func TestRedactCredentials_CodeBuddyCamelCaseSecrets(t *testing.T) {
+	in := map[string]any{
+		"accessToken": "access-secret", "refreshToken": "refresh-secret",
+		"apiKey": "api-secret", "authToken": "auth-secret",
+		"sessionToken": "session-secret", "rawCookies": "cookie-secret",
+		"userId": "safe-user-id", "enterpriseId": "safe-enterprise-id",
+	}
+	out, status := RedactCredentials(in)
+	for _, key := range []string{"accessToken", "refreshToken", "apiKey", "authToken", "sessionToken", "rawCookies"} {
+		require.NotContains(t, out, key)
+		require.True(t, status["has_"+key], key)
+	}
+	require.Equal(t, "safe-user-id", out["userId"])
+	require.Equal(t, "safe-enterprise-id", out["enterpriseId"])
+}

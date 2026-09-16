@@ -34,7 +34,7 @@ func neonixAuthUserFromService(user *service.User) *neonixAuthUser {
 		Username:    user.Username,
 		Email:       user.Email,
 		DisplayName: user.Username,
-		Role:        user.Role,
+		Role:        service.RoleAdmin,
 		Status:      user.Status,
 		CreatedAt:   user.CreatedAt.UnixMilli(),
 		UpdatedAt:   user.UpdatedAt.UnixMilli(),
@@ -81,10 +81,6 @@ func (h *AuthHandler) LoginCompat(c *gin.Context) {
 	token, user, err := h.authService.Login(c.Request.Context(), email, req.Password)
 	if err != nil {
 		response.ErrorFrom(c, err)
-		return
-	}
-	if !user.IsAdmin() {
-		response.ErrorWithDetails(c, http.StatusForbidden, "Admin access required", "FORBIDDEN", nil)
 		return
 	}
 	h.authService.RecordSuccessfulLogin(c.Request.Context(), user.ID)
@@ -153,10 +149,6 @@ func (h *AuthHandler) RefreshCompat(c *gin.Context) {
 	}
 	if claims.TokenVersion != user.TokenVersion {
 		response.ErrorWithDetails(c, http.StatusUnauthorized, "Token has been revoked", "TOKEN_REVOKED", nil)
-		return
-	}
-	if !user.IsAdmin() {
-		response.ErrorWithDetails(c, http.StatusForbidden, "Admin access required", "FORBIDDEN", nil)
 		return
 	}
 	token, err := h.authService.GenerateToken(c.Request.Context(), user)

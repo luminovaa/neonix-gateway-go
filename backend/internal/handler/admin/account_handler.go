@@ -11,6 +11,7 @@ import (
 	"log"
 	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"sort"
 	"strconv"
@@ -56,6 +57,7 @@ type AccountHandler struct {
 	openaiOAuthService      *service.OpenAIOAuthService
 	geminiOAuthService      *service.GeminiOAuthService
 	antigravityOAuthService *service.AntigravityOAuthService
+	kiroOAuthService        *service.KiroOAuthService
 	m365OAuthService        *service.M365OAuthService
 	mailboxOAuthService     *service.MailboxOAuthService
 	mailboxRuntime          *service.PythonMailboxRuntime
@@ -72,9 +74,16 @@ type AccountHandler struct {
 	tokenCacheInvalidator   service.TokenCacheInvalidator
 	grokImportProber        grokImportProber
 	grokDeviceOAuthService  *service.GrokOAuthService
+	codeBuddyDeviceLogin    *service.CodeBuddyDeviceLoginService
 	upstreamBillingProbe    *service.UpstreamBillingProbeService
 	ollamaCloudUsage        *service.OllamaCloudUsageService
 	cfg                     *config.Config
+}
+
+func (h *AccountHandler) SetCodeBuddyDeviceLoginService(login *service.CodeBuddyDeviceLoginService) {
+	if h != nil {
+		h.codeBuddyDeviceLogin = login
+	}
 }
 
 // SetUpstreamBillingProbeService attaches the optional remote billing probe service.
@@ -109,6 +118,7 @@ func NewAccountHandler(
 		openaiOAuthService:      openaiOAuthService,
 		geminiOAuthService:      geminiOAuthService,
 		antigravityOAuthService: antigravityOAuthService,
+		kiroOAuthService:        service.NewKiroOAuthService(),
 		m365OAuthService:        service.NewM365OAuthService(),
 		mailboxOAuthService:     service.NewMailboxOAuthService(),
 		mailboxRuntime:          service.NewPythonMailboxRuntime(),
@@ -893,18 +903,44 @@ func (h *AccountHandler) ListCompat(c *gin.Context) {
 		return
 	}
 	page, pageSize := response.ParsePagination(c)
-	accounts, total, err := h.adminService.ListAccounts(
-		c.Request.Context(), page, pageSize,
-		c.Query("platform"), c.Query("type"), c.Query("status"), strings.TrimSpace(c.Query("search")), 0, "",
-		c.DefaultQuery("sort_by", "name"), c.DefaultQuery("sort_order", "asc"),
-	)
+	var accounts []service.Account
+	var total int64
+	var err error
+	providerFilter := splitCompatProviders(c.Query("providers"))
+	if len(providerFilter) > 0 {
+		all, listErr := h.adminService.ListAccountsForSchedulerScoreFilter(c.Request.Context(), "", "", c.Query("status"), strings.TrimSpace(c.Query("search")), 0, "")
+		err = listErr
+		if listErr == nil {
+			filtered := make([]service.Account, 0, len(all))
+			for i := range all {
+				if _, wanted := providerFilter[neonixAccountProvider(&all[i])]; wanted {
+					filtered = append(filtered, all[i])
+				}
+			}
+			total = int64(len(filtered))
+			start := (page - 1) * pageSize
+			if start < len(filtered) {
+				end := start + pageSize
+				if end > len(filtered) {
+					end = len(filtered)
+				}
+				accounts = filtered[start:end]
+			}
+		}
+	} else {
+		accounts, total, err = h.adminService.ListAccounts(
+			c.Request.Context(), page, pageSize,
+			c.Query("platform"), c.Query("type"), c.Query("status"), strings.TrimSpace(c.Query("search")), 0, "",
+			c.DefaultQuery("sort_by", "name"), c.DefaultQuery("sort_order", "asc"),
+		)
+	}
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
 	items := make([]any, 0, len(accounts))
 	for index := range accounts {
-		items = append(items, h.accountListResponseFromService(&accounts[index]))
+		items = append(items, neonixAccountView(&accounts[index]))
 	}
 	pages := int64(1)
 	if pageSize > 0 && total > 0 {
@@ -919,6 +955,26 @@ func (h *AccountHandler) ListCompat(c *gin.Context) {
 		},
 		"stats": gin.H{"total": total},
 	})
+}
+
+func splitCompatProviders(raw string) map[string]struct{} {
+	result := make(map[string]struct{})
+	for _, value := range strings.Split(raw, ",") {
+		if value = strings.TrimSpace(value); value != "" {
+			result[value] = struct{}{}
+		}
+	}
+	return result
+}
+
+func neonixAccountProvider(account *service.Account) string {
+	if account == nil {
+		return ""
+	}
+	if source, ok := account.Extra["source_provider"].(string); ok && strings.TrimSpace(source) != "" {
+		return strings.TrimSpace(source)
+	}
+	return account.Platform
 }
 
 // ProviderSummary exposes account coverage without returning credentials. It
@@ -994,7 +1050,7 @@ func (h *AccountHandler) UpdateEnabled(c *gin.Context) {
 	}
 	response.Success(c, gin.H{
 		"ok":      true,
-		"account": h.accountListResponseFromService(account),
+		"account": neonixAccountView(account),
 	})
 }
 
@@ -1032,6 +1088,77 @@ func (h *AccountHandler) checkOrWarmupCompat(c *gin.Context, force bool) {
 		response.ErrorFrom(c, err)
 		return
 	}
+	if account.Platform == service.PlatformKiro && h.accountTestService != nil {
+		recorder := httptest.NewRecorder()
+		probe, _ := gin.CreateTestContext(recorder)
+		probe.Request = c.Request.Clone(c.Request.Context())
+		modelID := "CLAUDE_SONNET_4_20250514_V1_0"
+		if mapping := account.GetModelMapping(); len(mapping) > 0 {
+			models := make([]string, 0, len(mapping))
+			for candidate := range mapping {
+				if strings.TrimSpace(candidate) != "" {
+					models = append(models, candidate)
+				}
+			}
+			sort.Strings(models)
+			if len(models) > 0 {
+				modelID = models[0]
+			}
+		}
+		if err := h.accountTestService.TestAccountConnection(probe, accountID, modelID, "hi", ""); err != nil {
+			response.Error(c, http.StatusBadGateway, "Kiro account probe failed")
+			return
+		}
+		if !accountProbeSucceeded(recorder.Body.Bytes()) {
+			response.Error(c, http.StatusBadGateway, "Kiro account probe failed")
+			return
+		}
+	}
+	if account.Platform == service.PlatformQoder && h.accountTestService != nil {
+		recorder := httptest.NewRecorder()
+		probe, _ := gin.CreateTestContext(recorder)
+		probe.Request = c.Request.Clone(c.Request.Context())
+		if err := h.accountTestService.TestAccountConnection(probe, accountID, "qr/Lite", "hi", ""); err != nil {
+			response.Error(c, http.StatusBadGateway, "Qoder account probe failed")
+			return
+		}
+		if !accountProbeSucceeded(recorder.Body.Bytes()) {
+			response.Error(c, http.StatusBadGateway, "Qoder account probe failed")
+			return
+		}
+		response.Success(c, gin.H{"ok": true, "usage": nil, "account": neonixAccountView(account)})
+		return
+	}
+	if (account.Platform == service.PlatformCodeBuddy || account.Platform == service.PlatformWorkBuddy) && h.accountTestService != nil {
+		recorder := httptest.NewRecorder()
+		probe, _ := gin.CreateTestContext(recorder)
+		probe.Request = c.Request.Clone(c.Request.Context())
+		if err := h.accountTestService.TestAccountConnection(probe, accountID, "cb/", "hi", ""); err != nil {
+			response.Error(c, http.StatusBadGateway, "CodeBuddy account probe failed")
+			return
+		}
+		if !accountProbeSucceeded(recorder.Body.Bytes()) {
+			response.Error(c, http.StatusBadGateway, "CodeBuddy account probe failed")
+			return
+		}
+		response.Success(c, gin.H{"ok": true, "usage": nil, "account": neonixAccountView(account)})
+		return
+	}
+	if account.Platform == service.PlatformCodeBuddyChina && h.accountTestService != nil {
+		recorder := httptest.NewRecorder()
+		probe, _ := gin.CreateTestContext(recorder)
+		probe.Request = c.Request.Clone(c.Request.Context())
+		if err := h.accountTestService.TestAccountConnection(probe, accountID, "cbc/deepseek-v3", "hi", ""); err != nil {
+			response.Error(c, http.StatusBadGateway, "CodeBuddy China account probe failed")
+			return
+		}
+		if !accountProbeSucceeded(recorder.Body.Bytes()) {
+			response.Error(c, http.StatusBadGateway, "CodeBuddy China account probe failed")
+			return
+		}
+		response.Success(c, gin.H{"ok": true, "usage": nil, "account": neonixAccountView(account)})
+		return
+	}
 	var usage *service.UsageInfo
 	if h.accountUsageService != nil {
 		usage, err = h.accountUsageService.GetUsage(c.Request.Context(), accountID, force)
@@ -1040,7 +1167,30 @@ func (h *AccountHandler) checkOrWarmupCompat(c *gin.Context, force bool) {
 			return
 		}
 	}
-	response.Success(c, gin.H{"ok": true, "usage": usage, "account": h.accountResponseFromService(account)})
+	response.Success(c, gin.H{"ok": true, "usage": usage, "account": neonixAccountView(account)})
+}
+
+// accountProbeSucceeded accepts only a real successful terminal SSE event.
+// A substring check can be fooled by an error message that happens to quote a
+// test_complete payload, and it cannot distinguish success:false.
+func accountProbeSucceeded(body []byte) bool {
+	for _, line := range strings.Split(string(body), "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		var event struct {
+			Type    string `json:"type"`
+			Success bool   `json:"success"`
+		}
+		if err := json.Unmarshal([]byte(strings.TrimSpace(strings.TrimPrefix(line, "data:"))), &event); err != nil {
+			continue
+		}
+		if event.Type == "test_complete" && event.Success {
+			return true
+		}
+	}
+	return false
 }
 
 type codexDeviceOAuthCompatRequest struct {
@@ -1171,7 +1321,7 @@ func (h *AccountHandler) PollCodexOAuthCompat(c *gin.Context) {
 	response.Success(c, gin.H{
 		"status":  "complete",
 		"created": created,
-		"account": h.buildAccountResponseWithRuntime(c.Request.Context(), account),
+		"account": neonixAccountView(account),
 	})
 }
 
@@ -1311,7 +1461,7 @@ func (h *AccountHandler) PollGrokOAuthCompat(c *gin.Context) {
 		return
 	}
 	h.grokDeviceOAuthService.ConsumeGrokDevice(req.LoginID)
-	response.Success(c, gin.H{"status": "complete", "created": created, "account": h.buildAccountResponseWithRuntime(c.Request.Context(), account)})
+	response.Success(c, gin.H{"status": "complete", "created": created, "account": neonixAccountView(account)})
 }
 
 func credentialMapString(values map[string]any, key string) string {
@@ -1431,7 +1581,7 @@ func (h *AccountHandler) CompleteM365OAuthCompat(c *gin.Context) {
 		return
 	}
 	h.m365OAuthService.Consume(req.LoginID)
-	response.Success(c, gin.H{"status": "complete", "created": created, "account": h.buildAccountResponseWithRuntime(c.Request.Context(), account)})
+	response.Success(c, gin.H{"status": "complete", "created": created, "account": neonixAccountView(account)})
 }
 
 func (h *AccountHandler) CancelM365OAuthCompat(c *gin.Context) {
@@ -1739,7 +1889,7 @@ func (h *AccountHandler) CompleteMailboxOAuthCompat(c *gin.Context) {
 		return
 	}
 	h.mailboxOAuthService.Consume(req.LoginID)
-	mailboxSuccess(c, gin.H{"status": "complete", "created": created, "account": h.buildAccountResponseWithRuntime(c.Request.Context(), account)})
+	mailboxSuccess(c, gin.H{"status": "complete", "created": created, "account": neonixAccountView(account)})
 }
 
 func (h *AccountHandler) CancelMailboxOAuthCompat(c *gin.Context) {
@@ -1873,7 +2023,7 @@ func (h *AccountHandler) CompleteAntigravityOAuthCompat(c *gin.Context) {
 		response.Success(c, gin.H{
 			"status":      "complete",
 			"created":     false,
-			"account":     h.buildAccountResponseWithRuntime(c.Request.Context(), updated),
+			"account":     neonixAccountView(updated),
 			"warning":     antigravityOAuthWarning(tokenInfo),
 			"warningCode": antigravityOAuthWarningCode(tokenInfo),
 		})
@@ -1899,7 +2049,7 @@ func (h *AccountHandler) CompleteAntigravityOAuthCompat(c *gin.Context) {
 	response.Success(c, gin.H{
 		"status":      "complete",
 		"created":     true,
-		"account":     h.buildAccountResponseWithRuntime(c.Request.Context(), created),
+		"account":     neonixAccountView(created),
 		"warning":     antigravityOAuthWarning(tokenInfo),
 		"warningCode": antigravityOAuthWarningCode(tokenInfo),
 	})
@@ -3839,6 +3989,31 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 	account, err := h.adminService.GetAccount(c.Request.Context(), accountID)
 	if err != nil {
 		response.NotFound(c, "Account not found")
+		return
+	}
+
+	if account.Platform == service.PlatformKiro || account.Platform == service.PlatformQoder || account.Platform == service.PlatformCodeBuddy || account.Platform == service.PlatformWorkBuddy || account.Platform == service.PlatformCodeBuddyChina {
+		if h.accountTestService != nil {
+			if models, fetchErr := h.accountTestService.FetchUpstreamSupportedModels(c.Request.Context(), account); fetchErr == nil && len(models) > 0 {
+				items := make([]openai.Model, 0, len(models))
+				for _, modelID := range models {
+					items = append(items, openai.Model{ID: modelID, Object: "model", Type: "model", OwnedBy: account.Platform, DisplayName: modelID})
+				}
+				response.Success(c, items)
+				return
+			}
+		}
+		mapping := account.GetModelMapping()
+		models := make([]string, 0, len(mapping))
+		for modelID := range mapping {
+			models = append(models, modelID)
+		}
+		sort.Strings(models)
+		items := make([]openai.Model, 0, len(models))
+		for _, modelID := range models {
+			items = append(items, openai.Model{ID: modelID, Object: "model", Type: "model", OwnedBy: account.Platform, DisplayName: modelID})
+		}
+		response.Success(c, items)
 		return
 	}
 

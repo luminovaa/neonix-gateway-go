@@ -17,7 +17,7 @@ func TestNeonixAuthUserMapperKeepsSafeCamelCaseFields(t *testing.T) {
 		ID:           9,
 		Username:     "operator",
 		Email:        "operator@example.com",
-		Role:         service.RoleAdmin,
+		Role:         service.RoleUser,
 		Status:       service.StatusActive,
 		CreatedAt:    created,
 		UpdatedAt:    updated,

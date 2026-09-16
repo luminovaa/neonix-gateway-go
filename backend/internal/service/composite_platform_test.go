@@ -178,6 +178,10 @@ func TestDetectModelPlatform(t *testing.T) {
 		{name: "deepseek", model: "deepseek-v4-pro", platform: PlatformDeepseek, ok: true},
 		{name: "minimax", model: "MiniMax-M3", platform: PlatformMiniMax, ok: true},
 		{name: "minimax prefix", model: "minimax/MiniMax-M2.5", platform: PlatformMiniMax, ok: true},
+		{name: "kiro prefix", model: "kiro/CLAUDE_SONNET_4_20250514_V1_0", platform: PlatformKiro, ok: true},
+		{name: "qoder prefix", model: "qr/Lite", platform: PlatformQoder, ok: true},
+		{name: "codebuddy prefix", model: "cb/gpt-5.4", platform: PlatformCodeBuddy, ok: true},
+		{name: "codebuddy china prefix", model: "cbc/deepseek-v3", platform: PlatformCodeBuddyChina, ok: true},
 		{name: "abab legacy", model: "abab6.5-chat", platform: PlatformMiniMax, ok: true},
 		{name: "abab7 legacy", model: "abab7-chat-preview", platform: PlatformMiniMax, ok: true},
 		{name: "abab unrelated namespace", model: "abab-other", ok: false},
@@ -216,13 +220,13 @@ func TestCompositeGroupSchedulerHasAllCanonicalPlatformBuckets(t *testing.T) {
 		platforms = append(platforms, platform)
 	}
 	require.ElementsMatch(t,
-		[]string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax},
+		ConcreteGatewayPlatforms(),
 		platforms,
 	)
 }
 
-func TestCompositeConcretePlatformsIncludeCNProviders(t *testing.T) {
-	for _, platform := range []string{PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax} {
+func TestCompositeConcretePlatformsIncludeNativeProviders(t *testing.T) {
+	for _, platform := range ConcreteGatewayPlatforms() {
 		require.True(t, isConcreteRequestPlatform(platform))
 		require.True(t, canCopyAccountsFromGroupPlatform(PlatformComposite, platform))
 	}

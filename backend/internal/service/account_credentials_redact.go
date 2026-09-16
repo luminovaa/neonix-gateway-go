@@ -5,15 +5,17 @@ package service
 var SensitiveCredentialKeys = []string{
 	// OAuth
 	"access_token", "refresh_token", "id_token", "client_secret", "agent_private_key",
+	"accessToken", "refreshToken", "idToken", "clientSecret", "agentPrivateKey",
 	// Codex auth.json is a serialized bundle of the OAuth tokens above.
 	"auth_json", "authJson",
 	// API Key 类
-	"api_key", "token", "session_key", "session_token", "service_token", "ph_token", "cookie", "cookies", "rawCookies",
+	"api_key", "apiKey", "token", "auth_token", "authToken", "session_key", "session_token", "sessionToken",
+	"service_token", "serviceToken", "ph_token", "phToken", "cookie", "cookies", "rawCookies", "raw_cookies",
 	// Grok Web SSO / password (must never persist or echo after Build OAuth)
-	"password", "sso_token", "sso", "sso-rw", "clearTextPassword",
+	"password", "relogin_password", "reloginPassword", "sso_token", "sso", "sso-rw", "clearTextPassword", "clear_text_password",
 	// 云服务凭据
-	"aws_secret_access_key", "aws_session_token",
-	"service_account_json", "service_account", "private_key",
+	"aws_secret_access_key", "awsSecretAccessKey", "aws_session_token", "awsSessionToken",
+	"service_account_json", "serviceAccountJson", "service_account", "serviceAccount", "private_key", "privateKey",
 }
 
 var sensitiveCredentialKeySet = func() map[string]struct{} {

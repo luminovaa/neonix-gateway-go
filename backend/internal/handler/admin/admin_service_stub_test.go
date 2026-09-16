@@ -496,6 +496,10 @@ func (s *stubAdminService) GetAccount(ctx context.Context, id int64) (*service.A
 	return &account, nil
 }
 
+func (s *stubAdminService) RevealLinkedGitHubIdentityPassword(context.Context, int64) (string, error) {
+	return "github-password", nil
+}
+
 func (s *stubAdminService) GetAccountsByIDs(ctx context.Context, ids []int64) ([]*service.Account, error) {
 	out := make([]*service.Account, 0, len(ids))
 	for _, id := range ids {

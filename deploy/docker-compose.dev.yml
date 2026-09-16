@@ -12,9 +12,7 @@ services:
   sub2api:
     build:
       context: ..
-      dockerfile: Dockerfile
-      args:
-        NPM_CONFIG_REGISTRY: ${NPM_CONFIG_REGISTRY:-https://registry.npmmirror.com}
+      dockerfile: Dockerfile.neonix
     container_name: sub2api-dev
     restart: unless-stopped
     security_opt:

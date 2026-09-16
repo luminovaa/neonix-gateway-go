@@ -47,7 +47,7 @@ func TestNeonixHTTPContractFixture(t *testing.T) {
 		if route.Name == "" || route.Method == "" || route.Path == "" {
 			t.Fatalf("route is missing identity: %+v", route)
 		}
-		if route.Auth != "none" && route.Auth != "operator" && route.Auth != "gateway" {
+		if route.Auth != "none" && route.Auth != "operator" && route.Auth != "gateway" && route.Auth != "internal" {
 			t.Fatalf("route %q has unsupported auth boundary %q", route.Name, route.Auth)
 		}
 		if route.Success.Status < 200 || route.Success.Status > 299 {

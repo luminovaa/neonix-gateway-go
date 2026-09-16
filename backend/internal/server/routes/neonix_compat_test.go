@@ -27,7 +27,7 @@ func TestNeonixCompatibilityRoutesAreAdminOnly(t *testing.T) {
 	passthroughAudit := servermiddleware.AuditLogMiddleware(func(c *gin.Context) { c.Next() })
 	RegisterNeonixCompatibilityRoutes(
 		router,
-		&handler.Handlers{Admin: &handler.AdminHandlers{Account: &adminhandler.AccountHandler{}, Group: adminhandler.NewGroupHandler(nil, nil, nil)}},
+		&handler.Handlers{Admin: &handler.AdminHandlers{Account: &adminhandler.AccountHandler{}, Group: adminhandler.NewGroupHandler(nil, nil, nil), Proxy: adminhandler.NewProxyHandler(nil)}},
 		adminAuth,
 		passthroughAudit,
 		nil,
@@ -50,6 +50,15 @@ func TestNeonixCompatibilityRoutesAreAdminOnly(t *testing.T) {
 		"/api/accounts/grok/oauth/start",
 		"/api/accounts/grok/oauth/poll",
 		"/api/accounts/grok/oauth/cancel",
+		"/api/accounts/kiro/oauth/start",
+		"/api/accounts/kiro/oauth/complete",
+		"/api/accounts/kiro/oauth/cancel",
+		"/api/accounts/codebuddy/device-auth/start",
+		"/api/accounts/codebuddy/device-auth/poll",
+		"/api/accounts/codebuddy/device-auth/cancel",
+		"/api/accounts/codebuddy/oauth/start",
+		"/api/accounts/codebuddy/oauth/poll",
+		"/api/accounts/codebuddy/oauth/cancel",
 		"/api/accounts/m365/oauth/start",
 		"/api/accounts/m365/oauth/complete",
 		"/api/accounts/m365/oauth/cancel",
@@ -64,6 +73,11 @@ func TestNeonixCompatibilityRoutesAreAdminOnly(t *testing.T) {
 		"/api/register/logs",
 		"/api/register/bfs-lockout",
 		"/api/register/python-status",
+		"/api/register/system-status",
+		"/api/register/sms/prices",
+		"/api/register/grok-expired-count",
+		"/api/register/qoder-injectable-count",
+		"/api/register/github-accounts",
 		"/api/accounts/1/check",
 		"/api/accounts/1/warmup",
 		"/api/accounts/1/clear-error",
@@ -75,27 +89,37 @@ func TestNeonixCompatibilityRoutesAreAdminOnly(t *testing.T) {
 		"/api/proxy/resilience",
 		"/api/proxy/resilience/model-locks/clear",
 		"/api/proxy/status",
+		"/api/proxy/custom/status",
+		"/api/proxy/custom/config",
+		"/api/proxy/custom/pool/test",
+		"/api/proxy/custom/pool/refresh",
+		"/api/proxy/custom/pool/check",
+		"/api/proxy/custom/pool/rotate",
+		"/api/proxy/custom/pool/reset",
+		"/api/proxy/custom/pool/1",
 		"/api/proxy/stats",
 		"/api/proxy/stats/reset",
 		"/api/proxy/request-logs",
 		"/api/proxy/logs",
 		"/api/dashboard/me",
-		"/api/dashboard/admin/users",
 		"/api/dashboard/leaderboard",
 		"/api/proxy/config",
 		"/api/proxy/start",
 		"/api/proxy/stop",
 		"/api/proxy/models/sync/providers/oc",
+		"/api/proxy/models/refresh",
+		"/api/accounts/filter-registered",
 		"/api/api-keys/1/usage",
-		"/api/api-keys/1/access-stats",
 		"/api/api-keys/regenerate",
 		"/api/settings/theme",
 	} {
 		method := http.MethodPost
-		if path == "/api/mailbox/accounts" || path == "/api/accounts/groups" || path == "/api/proxy/resilience" || path == "/api/proxy/status" || path == "/api/proxy/stats" || path == "/api/proxy/request-logs" || path == "/api/proxy/logs" || strings.HasPrefix(path, "/api/dashboard/") || strings.HasPrefix(path, "/api/register/status") || strings.HasPrefix(path, "/api/register/logs") || strings.HasPrefix(path, "/api/register/bfs-lockout") || strings.HasPrefix(path, "/api/register/python-status") || path == "/api/proxy/config" || path == "/api/api-keys/1/usage" || path == "/api/api-keys/1/access-stats" {
+		if path == "/api/mailbox/accounts" || path == "/api/accounts/groups" || path == "/api/proxy/resilience" || path == "/api/proxy/status" || path == "/api/proxy/custom/status" || path == "/api/proxy/custom/config" || path == "/api/proxy/stats" || path == "/api/proxy/request-logs" || path == "/api/proxy/logs" || strings.HasPrefix(path, "/api/dashboard/") || strings.HasPrefix(path, "/api/register/status") || strings.HasPrefix(path, "/api/register/logs") || strings.HasPrefix(path, "/api/register/bfs-lockout") || strings.HasPrefix(path, "/api/register/python-status") || strings.HasPrefix(path, "/api/register/system-status") || strings.HasPrefix(path, "/api/register/sms/prices") || strings.HasPrefix(path, "/api/register/grok-expired-count") || strings.HasPrefix(path, "/api/register/qoder-injectable-count") || strings.HasPrefix(path, "/api/register/github-accounts") || path == "/api/proxy/config" || path == "/api/api-keys/1/usage" {
 			method = http.MethodGet
 		} else if path == "/api/settings/theme" {
 			method = http.MethodPut
+		} else if path == "/api/proxy/custom/pool/1" {
+			method = http.MethodPatch
 		}
 		req := httptest.NewRequest(method, path, nil)
 		resp := httptest.NewRecorder()
@@ -134,6 +158,14 @@ func TestNeonixCompatibilityRoutesAreAdminOnly(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &accountsPayload))
 	require.Empty(t, accountsPayload.Accounts)
+
+	publicReq := httptest.NewRequest(http.MethodGet, "/api/public/stats", nil)
+	publicResp := httptest.NewRecorder()
+	router.ServeHTTP(publicResp, publicReq)
+	// A nil database makes the public endpoint unavailable in this wiring test,
+	// but it must remain reachable without the operator JWT.
+	require.Equal(t, http.StatusServiceUnavailable, publicResp.Code)
+	require.Contains(t, publicResp.Body.String(), "PUBLIC_STATS_UNAVAILABLE")
 }
 
 func TestNeonixProviderDetailUsesCanonicalRegistry(t *testing.T) {

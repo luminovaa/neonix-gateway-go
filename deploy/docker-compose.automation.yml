@@ -1,0 +1,62 @@
+# Optional Neonix Python automation overlay.
+#
+# The worker image is built and versioned independently from this Go repository.
+# It must implement contracts/fixtures/python-automation-http-contract.v1.json.
+# Run with one of the normal Compose files, for example:
+#   docker compose -f docker-compose.yml -f docker-compose.automation.yml up -d
+services:
+  sub2api:
+    environment:
+      - PYAUTO_BASE_URL=http://python-automation:7788
+      - PYAUTO_INTERNAL_API_KEY=${PYAUTO_INTERNAL_API_KEY:?PYAUTO_INTERNAL_API_KEY is required}
+      - RUNTIME_MANAGER_URL=http://python-automation:7790
+      - RUNTIME_MANAGER_API_KEY=${RUNTIME_MANAGER_API_KEY:?RUNTIME_MANAGER_API_KEY is required}
+      - YYDSMAIL_API_KEY=${YYDSMAIL_API_KEY:-}
+      - YYDSMAIL_BASE_URL=${YYDSMAIL_BASE_URL:-https://maliapi.215.im/v1}
+      - SUBSCRIPTION_BIN=${SUBSCRIPTION_BIN:-}
+      - CAPTCHA_API_KEY=${CAPTCHA_API_KEY:-}
+      - FIVESIM_API_KEY=${FIVESIM_API_KEY:-}
+      - HEROSMS_API_KEY=${HEROSMS_API_KEY:-}
+      - HEROSMS_SERVICE=${HEROSMS_SERVICE:-ot}
+    depends_on:
+      python-automation:
+        condition: service_healthy
+    networks:
+      - sub2api-network
+
+  python-automation:
+    image: ${PYAUTO_IMAGE:?PYAUTO_IMAGE is required}
+    container_name: neonix-python-automation
+    restart: unless-stopped
+    expose:
+      - "7788"
+      - "7790"
+      - "8877"
+    environment:
+      - PYAUTO_HOST=0.0.0.0
+      - PYAUTO_PORT=7788
+      - PYAUTO_INTERNAL_API_KEY=${PYAUTO_INTERNAL_API_KEY:?PYAUTO_INTERNAL_API_KEY is required}
+      - PYAUTO_BACKEND_CALLBACK_URL=http://sub2api:8080
+      - RUNTIME_MANAGER_PORT=7790
+      - RUNTIME_MANAGER_API_KEY=${RUNTIME_MANAGER_API_KEY:?RUNTIME_MANAGER_API_KEY is required}
+      - RUNTIME_IDLE_TIMEOUT_SECONDS=${RUNTIME_IDLE_TIMEOUT_SECONDS:-90}
+      - RUNTIME_CAPTCHA_HEADLESS=${RUNTIME_CAPTCHA_HEADLESS:-1}
+      - RUNTIME_CAPTCHA_XVFB=${RUNTIME_CAPTCHA_XVFB:-1}
+    networks:
+      - sub2api-network
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7790/health', timeout=2)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+networks:
+  sub2api-network:
+    driver: bridge

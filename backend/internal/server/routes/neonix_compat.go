@@ -131,6 +131,8 @@ func RegisterNeonixCompatibilityRoutes(
 	}
 	proxyConfigRuntime := newNeonixProxyConfigRuntime(settingService, serverConfig)
 	filtersRuntime := filterrule.New(db)
+	dashboard := &neonixDashboard{db: db}
+	r.GET("/api/public/stats", dashboard.publicStats)
 	_ = filtersRuntime.Reload()
 	filterrule.SetCurrent(filtersRuntime)
 	if h != nil && h.Admin != nil && h.Admin.Register != nil {
@@ -171,12 +173,29 @@ func RegisterNeonixCompatibilityRoutes(
 	}
 	accounts.GET("", h.Admin.Account.ListCompat)
 	accounts.GET("/ids", h.Admin.Account.IDsCompat)
+	accounts.GET("/byok-presets", h.Admin.Account.ListBYOKPresetsCompat)
+	accounts.POST("/fetch-models-probe", h.Admin.Account.ProbeBYOKModelsCompat)
 	accounts.POST("/codex/oauth/start", h.Admin.Account.StartCodexOAuthCompat)
 	accounts.POST("/codex/oauth/poll", h.Admin.Account.PollCodexOAuthCompat)
 	accounts.POST("/codex/oauth/cancel", h.Admin.Account.CancelCodexOAuthCompat)
 	accounts.POST("/grok/oauth/start", h.Admin.Account.StartGrokOAuthCompat)
 	accounts.POST("/grok/oauth/poll", h.Admin.Account.PollGrokOAuthCompat)
 	accounts.POST("/grok/oauth/cancel", h.Admin.Account.CancelGrokOAuthCompat)
+	accounts.POST("/kiro/oauth/start", h.Admin.Account.StartKiroOAuthCompat)
+	accounts.POST("/kiro/oauth/complete", h.Admin.Account.CompleteKiroOAuthCompat)
+	accounts.POST("/kiro/oauth/cancel", h.Admin.Account.CancelKiroOAuthCompat)
+	accounts.POST("/codebuddy/device-auth/start", h.Admin.Account.StartCodeBuddyDeviceCompat)
+	accounts.POST("/codebuddy/device-auth/poll", h.Admin.Account.PollCodeBuddyDeviceCompat)
+	accounts.POST("/codebuddy/device-auth/cancel", h.Admin.Account.CancelCodeBuddyDeviceCompat)
+	accounts.POST("/codebuddy/oauth/start", h.Admin.Account.StartCodeBuddyDeviceCompat)
+	accounts.POST("/codebuddy/oauth/poll", h.Admin.Account.PollCodeBuddyDeviceCompat)
+	accounts.POST("/codebuddy/oauth/cancel", h.Admin.Account.CancelCodeBuddyDeviceCompat)
+	// WorkBuddy uses the same device-flow response shape but is a separate
+	// provider pool. The domain returned by the trusted upstream determines the
+	// stored platform during completion.
+	accounts.POST("/workbuddy/device-auth/start", h.Admin.Account.StartWorkBuddyDeviceCompat)
+	accounts.POST("/workbuddy/device-auth/poll", h.Admin.Account.PollCodeBuddyDeviceCompat)
+	accounts.POST("/workbuddy/device-auth/cancel", h.Admin.Account.CancelCodeBuddyDeviceCompat)
 	accounts.POST("/m365/oauth/start", h.Admin.Account.StartM365OAuthCompat)
 	accounts.POST("/m365/oauth/complete", h.Admin.Account.CompleteM365OAuthCompat)
 	accounts.POST("/m365/oauth/cancel", h.Admin.Account.CancelM365OAuthCompat)
@@ -185,6 +204,9 @@ func RegisterNeonixCompatibilityRoutes(
 	accounts.POST("/antigravity/oauth/cancel", h.Admin.Account.CancelAntigravityOAuthCompat)
 	accounts.POST("/:id/check", h.Admin.Account.CheckCompat)
 	accounts.POST("/:id/warmup", h.Admin.Account.WarmupCompat)
+	accounts.POST("/:id/test-model", h.Admin.Account.TestBYOKModelCompat)
+	accounts.POST("/:id/fetch-models", h.Admin.Account.FetchBYOKModelsCompat)
+	accounts.POST("/:id/linked-identity/reveal", h.Admin.Account.RevealLinkedIdentitySecretCompat)
 	accounts.GET("/:id/usage", h.Admin.Account.GetUsage)
 	accounts.POST("/:id/clear-error", h.Admin.Account.ClearError)
 	accounts.POST("/:id/recover-state", h.Admin.Account.RecoverState)
@@ -194,14 +216,15 @@ func RegisterNeonixCompatibilityRoutes(
 	accounts.GET("/:id/models", h.Admin.Account.GetAvailableModels)
 	accounts.POST("/:id/models/sync-upstream", h.Admin.Account.SyncUpstreamModels)
 	accounts.GET("/:id/stats", h.Admin.Account.GetStats)
-	accounts.GET("/:id", h.Admin.Account.GetByID)
-	accounts.POST("", h.Admin.Account.Create)
-	accounts.POST("/batch", h.Admin.Account.BatchCreate)
+	accounts.GET("/:id", h.Admin.Account.GetByIDCompat)
+	accounts.POST("", h.Admin.Account.CreateCompat)
+	accounts.POST("/batch", h.Admin.Account.BatchCreateCompat)
+	accounts.POST("/filter-registered", filterRegisteredAccounts(db))
 	accounts.POST("/batch-refresh", h.Admin.Account.BatchRefresh)
 	accounts.POST("/batch-clear-error", h.Admin.Account.BatchClearError)
 	accounts.POST("/batch-delete", h.Admin.Account.BatchDelete)
 	accounts.POST("/bulk-update", h.Admin.Account.BulkUpdate)
-	accounts.PUT("/:id", h.Admin.Account.Update)
+	accounts.PUT("/:id", h.Admin.Account.UpdateCompat)
 	accounts.PATCH("/:id/enabled", h.Admin.Account.UpdateEnabled)
 	accounts.DELETE("/:id", h.Admin.Account.Delete)
 	accounts.POST("/:id/refresh", h.Admin.Account.Refresh)
@@ -216,7 +239,6 @@ func RegisterNeonixCompatibilityRoutes(
 	apiKeys.POST("/regenerate", h.APIKey.RegenerateCompat)
 	apiKeys.DELETE("/:id", h.APIKey.DeleteCompat)
 	apiKeys.GET("/:id/usage", h.APIKey.GetUsageCompat)
-	apiKeys.GET("/:id/access-stats", h.APIKey.GetAccessStatsCompat)
 
 	// Electron/tray settings use a flat JSON key/value contract. The full
 	// typed admin settings API remains available under /api/v1/admin/settings.
@@ -239,6 +261,11 @@ func RegisterNeonixCompatibilityRoutes(
 	register.GET("/logs", h.Admin.Register.Logs)
 	register.GET("/bfs-lockout", h.Admin.Register.BFSLockout)
 	register.GET("/python-status", h.Admin.Register.PythonStatus)
+	register.GET("/system-status", h.Admin.Register.SystemStatus)
+	register.GET("/sms/prices", h.Admin.Register.SMSPrices)
+	register.GET("/grok-expired-count", h.Admin.Register.GrokExpiredCount)
+	register.GET("/qoder-injectable-count", h.Admin.Register.QoderInjectableCount)
+	register.GET("/github-accounts", h.Admin.Register.GitHubAccounts)
 
 	api.GET("/providers", func(c *gin.Context) {
 		response.Success(c, gin.H{"providers": provider.All()})
@@ -258,13 +285,29 @@ func RegisterNeonixCompatibilityRoutes(
 		}
 		response.Success(c, definition)
 	})
+	api.POST("/providers/:id/validate", h.Admin.Account.ValidateProviderCompat)
 	api.GET("/proxy/resilience", h.Admin.Account.ResilienceCompat)
 	api.POST("/proxy/resilience/model-locks/clear", h.Admin.Account.ClearModelLocksCompat)
 	api.GET("/proxy/config", proxyConfigRuntime.get)
 	api.PUT("/proxy/config", proxyConfigRuntime.update)
 	api.GET("/proxy/status", proxyConfigRuntime.status)
+	if h != nil && h.Admin != nil && h.Admin.Proxy != nil {
+		api.GET("/proxy/custom/config", h.Admin.Proxy.CustomPoolStatusCompat)
+		api.PATCH("/proxy/custom/config", h.Admin.Proxy.UpdateCustomPoolCompat)
+		api.GET("/proxy/custom/status", h.Admin.Proxy.CustomPoolStatusCompat)
+		api.POST("/proxy/custom/pool/test", h.Admin.Proxy.TestCustomPoolCompat)
+		api.POST("/proxy/custom/pool/refresh", h.Admin.Proxy.CustomPoolActionCompat)
+		api.POST("/proxy/custom/pool/check", h.Admin.Proxy.CustomPoolActionCompat)
+		api.POST("/proxy/custom/pool/rotate", h.Admin.Proxy.CustomPoolActionCompat)
+		api.POST("/proxy/custom/pool/reset", h.Admin.Proxy.CustomPoolActionCompat)
+		api.PATCH("/proxy/custom/pool/:id", h.Admin.Proxy.UpdateCustomPoolEntryCompat)
+	}
 	models := &neonixModelCatalog{db: db}
 	api.GET("/proxy/models", models.list)
+	// OpenCode Zen is the only catalog whose upstream free-model list is a
+	// complete deletion authority. The UI refresh action therefore syncs that
+	// catalog and preserves every other provider's imported or curated rows.
+	api.POST("/proxy/models/refresh", models.syncOpenCode)
 	api.POST("/proxy/models", models.create)
 	api.PATCH("/proxy/models/*id", models.update)
 	api.DELETE("/proxy/models/*id", models.delete)
@@ -283,9 +326,7 @@ func RegisterNeonixCompatibilityRoutes(
 	api.DELETE("/proxy/logs", logs.clear)
 	api.GET("/proxy/request-logs", logs.list)
 	api.DELETE("/proxy/request-logs", logs.clear)
-	dashboard := &neonixDashboard{db: db}
 	api.GET("/dashboard/me", dashboard.me)
-	api.GET("/dashboard/admin/users", dashboard.adminUsers)
 	api.GET("/dashboard/leaderboard", dashboard.leaderboard)
 	filters := &neonixFilters{db: db, runtime: filtersRuntime}
 	api.GET("/filters", filters.list)

@@ -15,7 +15,11 @@ import (
 
 	"github.com/luminovaa/neonix-gateway-go/internal/pkg/antigravity"
 	"github.com/luminovaa/neonix-gateway-go/internal/pkg/claude"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/codebuddy"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/codebuddychina"
 	"github.com/luminovaa/neonix-gateway-go/internal/pkg/geminicli"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/qoder"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/workbuddy"
 )
 
 const (
@@ -726,6 +730,18 @@ func (s *AccountTestService) fetchUpstreamModelList(ctx context.Context, account
 		models, err := s.fetchAntigravityOAuthUpstreamModels(ctx, account)
 		return models, nil, err
 	}
+	if account.Platform == PlatformKiro {
+		return s.fetchKiroUpstreamModels(ctx, account)
+	}
+	if account.Platform == PlatformQoder {
+		return s.fetchQoderUpstreamModels(ctx, account)
+	}
+	if account.Platform == PlatformCodeBuddy || account.Platform == PlatformWorkBuddy {
+		return s.fetchCodeBuddyUpstreamModels(ctx, account)
+	}
+	if account.Platform == PlatformCodeBuddyChina {
+		return fallbackCodeBuddyChinaUpstreamModels()
+	}
 
 	if s.httpUpstream == nil {
 		return nil, nil, newUpstreamModelSyncConfigError("Upstream HTTP client is not configured", nil)
@@ -776,10 +792,589 @@ func (s *AccountTestService) fetchUpstreamModelList(ctx context.Context, account
 	return models, body, nil
 }
 
+type qoderAvailableModel struct {
+	Value       string   `json:"value"`
+	DisplayName string   `json:"displayName"`
+	Description string   `json:"description"`
+	PriceFactor *float64 `json:"priceFactor"`
+	Source      string   `json:"source"`
+	IsDefault   bool     `json:"isDefault"`
+	SortOrder   *int     `json:"sortOrder"`
+}
+
+func (s *AccountTestService) fetchQoderUpstreamModels(ctx context.Context, account *Account) ([]string, []byte, error) {
+	token := qoderCredential(account, "token", "accessToken", "access_token", "apiKey", "api_key")
+	if token == "" || s.httpUpstream == nil {
+		return fallbackQoderUpstreamModels()
+	}
+	endpoints := []string{
+		"https://qoder.com/api/v1/remote/environments?limit=100",
+		"https://api.qoder.com/api/v1/remote/environments?limit=100",
+		"https://qoder.com/api/v1/cloud/environments",
+		"https://api.qoder.com/api/v1/cloud/environments",
+	}
+	limit := resolveModelsListReadLimit(s.cfg)
+	for _, endpoint := range endpoints {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+		if err != nil {
+			continue
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Accept", "application/json")
+		resp, err := s.httpUpstream.Do(req, upstreamModelsProxyURL(account), account.ID, account.Concurrency)
+		if err != nil {
+			continue
+		}
+		body, readErr := io.ReadAll(io.LimitReader(resp.Body, limit+1))
+		_ = resp.Body.Close()
+		if readErr != nil || int64(len(body)) > limit || resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			continue
+		}
+		var payload struct {
+			Data []struct {
+				Metadata struct {
+					AvailableModels []qoderAvailableModel `json:"available_models"`
+				} `json:"metadata"`
+			} `json:"data"`
+		}
+		if json.Unmarshal(body, &payload) != nil {
+			continue
+		}
+		seen := make(map[string]struct{})
+		available := make([]qoderAvailableModel, 0)
+		for _, environment := range payload.Data {
+			for _, model := range environment.Metadata.AvailableModels {
+				model.Value = strings.TrimSpace(model.Value)
+				if model.Value == "" {
+					continue
+				}
+				if _, ok := seen[model.Value]; ok {
+					continue
+				}
+				seen[model.Value] = struct{}{}
+				available = append(available, model)
+			}
+		}
+		if len(available) > 0 {
+			return buildQoderUpstreamModels(available, "qoder_live")
+		}
+	}
+	return fallbackQoderUpstreamModels()
+}
+
+func fallbackQoderUpstreamModels() ([]string, []byte, error) {
+	available := make([]qoderAvailableModel, 0, len(qoder.Models))
+	for _, model := range qoder.Models {
+		priceFactor := model.PriceFactor
+		available = append(available, qoderAvailableModel{Value: model.Upstream, DisplayName: model.DisplayName, PriceFactor: &priceFactor})
+	}
+	return buildQoderUpstreamModels(available, "qoder_fallback")
+}
+
+func buildQoderUpstreamModels(available []qoderAvailableModel, catalogSource string) ([]string, []byte, error) {
+	models := make([]string, 0, len(available))
+	items := make([]map[string]any, 0, len(available))
+	seen := make(map[string]struct{}, len(available))
+	for index, availableModel := range available {
+		model := qoder.Resolve(availableModel.Value)
+		normalizedID := strings.ToLower(model.ID)
+		if _, duplicate := seen[normalizedID]; duplicate {
+			continue
+		}
+		seen[normalizedID] = struct{}{}
+		models = append(models, model.ID)
+		modalities := []string{"text"}
+		if model.Vision {
+			modalities = append(modalities, "image")
+		}
+		description := strings.TrimSpace(availableModel.Description)
+		if description == "" {
+			description = "Qoder model via the configured account."
+		}
+		displayName := strings.TrimSpace(availableModel.DisplayName)
+		if displayName == "" {
+			displayName = model.DisplayName
+		}
+		priceFactor := model.PriceFactor
+		if availableModel.PriceFactor != nil {
+			priceFactor = *availableModel.PriceFactor
+		}
+		source := strings.TrimSpace(availableModel.Source)
+		if source == "" {
+			source = catalogSource
+		}
+		sortOrder := index
+		if availableModel.SortOrder != nil {
+			sortOrder = *availableModel.SortOrder
+		}
+		items = append(items, map[string]any{
+			"id": model.ID, "actual_model_id": model.Upstream, "display_name": displayName,
+			"description": description, "reasoning": model.Reasoning, "input_modalities": modalities,
+			"context_window": model.MaxInputTokens, "max_output_tokens": model.MaxOutputTokens,
+			"supports_vision": model.Vision, "supports_thinking": model.Reasoning, "price_factor": priceFactor,
+			"source": source, "is_default": availableModel.IsDefault, "sort_order": sortOrder,
+		})
+	}
+	body, err := json.Marshal(map[string]any{"object": "list", "data": items, "source": catalogSource})
+	if err != nil {
+		return nil, nil, newUpstreamModelSyncInternalError("Failed to encode Qoder model list", err)
+	}
+	return models, body, nil
+}
+
+type codeBuddyAvailableModel struct {
+	ID                string   `json:"id"`
+	Name              string   `json:"name"`
+	DisplayName       string   `json:"displayName"`
+	Description       string   `json:"description"`
+	Tags              []string `json:"tags"`
+	ContextWindow     int64    `json:"contextWindow"`
+	MaxTokens         int64    `json:"maxTokens"`
+	MaxInputTokens    int64    `json:"maxInputTokens"`
+	MaxOutputTokens   int64    `json:"maxOutputTokens"`
+	SupportsReasoning bool     `json:"supportsReasoning"`
+	SupportsImages    bool     `json:"supportsImages"`
+	SupportsToolCall  bool     `json:"supportsToolCall"`
+	OnlyReasoning     bool     `json:"onlyReasoning"`
+	Reasoning         struct {
+		DefaultEffort      string   `json:"defaultEffort"`
+		SupportedEfforts   []string `json:"supportedEfforts"`
+		CanDisableThinking bool     `json:"canDisableThinking"`
+	} `json:"reasoning"`
+	ModelContextWindow struct {
+		DefaultLength    int64   `json:"defaultLength"`
+		SupportedLengths []int64 `json:"supportedLengths"`
+	} `json:"modelContextWindow"`
+}
+
+func (s *AccountTestService) fetchCodeBuddyUpstreamModels(ctx context.Context, account *Account) ([]string, []byte, error) {
+	if account == nil || s == nil || s.codeBuddyGatewayService == nil || s.codeBuddyGatewayService.tokens == nil || s.httpUpstream == nil {
+		if account != nil && account.Platform == PlatformWorkBuddy {
+			return nil, nil, newUpstreamModelSyncConfigError("WorkBuddy model catalog is unavailable", nil)
+		}
+		return fallbackCodeBuddyUpstreamModels()
+	}
+	identity := codeBuddyIdentity(account)
+	if account.Platform == PlatformWorkBuddy && !workbuddy.IsGlobalDomain(identity.Domain) {
+		return nil, nil, newUpstreamModelSyncConfigError("WorkBuddy accounts must use the workbuddy.ai realm", nil)
+	}
+	if codebuddy.IsChinaRealm(identity.Domain) {
+		return nil, nil, newUpstreamModelSyncConfigError("CodeBuddy China accounts must use the codebuddy-china provider", nil)
+	}
+	if !identity.IsCLI() || strings.TrimSpace(identity.EnterpriseID) == "" {
+		if account.Platform == PlatformWorkBuddy {
+			return nil, nil, newUpstreamModelSyncConfigError("WorkBuddy requires a CLI OAuth credential and enterprise identity", nil)
+		}
+		return fallbackCodeBuddyUpstreamModels()
+	}
+	accessToken, err := s.codeBuddyGatewayService.tokens.AccessToken(ctx, account)
+	if err != nil {
+		if account.Platform == PlatformWorkBuddy {
+			return nil, nil, newUpstreamModelSyncUpstreamError("Failed to obtain WorkBuddy access token", err)
+		}
+		return fallbackCodeBuddyUpstreamModels()
+	}
+	identity.AccessToken = accessToken
+	hosts := codebuddy.ResolveHosts(identity.Domain)
+	endpoint := strings.TrimRight(hosts.Chat, "/") + "/console/enterprises/" + url.PathEscape(identity.EnterpriseID) + "/config/models"
+	if account.Platform == PlatformWorkBuddy {
+		// WorkBuddy Global serves a JSON plugin catalogue here; its console
+		// endpoint redirects to OIDC and must not be treated as a model list.
+		endpoint = strings.TrimRight(hosts.Chat, "/") + "/v2/enterprises/personal/models"
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		if account.Platform == PlatformWorkBuddy {
+			return nil, nil, newUpstreamModelSyncUpstreamError("Failed to request WorkBuddy model catalog", err)
+		}
+		return fallbackCodeBuddyUpstreamModels()
+	}
+	req.Header = codebuddy.CLIHeaders(identity)
+	req.Header.Set("Accept", "application/json")
+	resp, err := s.httpUpstream.Do(req, upstreamModelsProxyURL(account), account.ID, account.Concurrency)
+	if err != nil {
+		return fallbackCodeBuddyUpstreamModels()
+	}
+	bodyLimit := resolveModelsListReadLimit(s.cfg)
+	body, readErr := io.ReadAll(io.LimitReader(resp.Body, bodyLimit+1))
+	_ = resp.Body.Close()
+	if readErr != nil || int64(len(body)) > bodyLimit || resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		if account.Platform == PlatformWorkBuddy {
+			return nil, nil, newUpstreamModelSyncUpstreamError("WorkBuddy model catalog request failed", nil)
+		}
+		return fallbackCodeBuddyUpstreamModels()
+	}
+	var payload struct {
+		Data []codeBuddyAvailableModel `json:"data"`
+	}
+	if json.Unmarshal(body, &payload) != nil || len(payload.Data) == 0 {
+		if account.Platform == PlatformWorkBuddy {
+			return nil, nil, newUpstreamModelSyncUpstreamError("WorkBuddy returned no supported models", nil)
+		}
+		return fallbackCodeBuddyUpstreamModels()
+	}
+	chatModels := make([]codeBuddyAvailableModel, 0, len(payload.Data))
+	for _, model := range payload.Data {
+		model.ID = strings.TrimSpace(model.ID)
+		if model.ID == "" {
+			continue
+		}
+		if len(model.Tags) > 0 && !stringSliceContainsFold(model.Tags, "chat") {
+			continue
+		}
+		chatModels = append(chatModels, model)
+	}
+	if len(chatModels) == 0 {
+		if account.Platform == PlatformWorkBuddy {
+			return nil, nil, newUpstreamModelSyncUpstreamError("WorkBuddy returned no chat-capable models", nil)
+		}
+		return fallbackCodeBuddyUpstreamModels()
+	}
+	if account.Platform == PlatformWorkBuddy {
+		return buildWorkBuddyUpstreamModels(chatModels)
+	}
+	return buildCodeBuddyUpstreamModels(chatModels, "codebuddy_live")
+}
+
+// buildWorkBuddyUpstreamModels intentionally derives all capability fields
+// from the account-scoped Global catalogue.  WorkBuddy model availability is
+// entitlement-dependent, so the CodeBuddy curated table is not a fallback.
+func buildWorkBuddyUpstreamModels(available []codeBuddyAvailableModel) ([]string, []byte, error) {
+	models := make([]string, 0, len(available))
+	items := make([]map[string]any, 0, len(available))
+	seen := make(map[string]struct{}, len(available))
+	for index, item := range available {
+		upstreamID := strings.TrimSpace(item.ID)
+		if upstreamID == "" {
+			continue
+		}
+		modelID := "cb/" + strings.TrimPrefix(upstreamID, "cb/")
+		key := strings.ToLower(modelID)
+		if _, duplicate := seen[key]; duplicate {
+			continue
+		}
+		seen[key] = struct{}{}
+		models = append(models, modelID)
+		displayName := strings.TrimSpace(item.DisplayName)
+		if displayName == "" {
+			displayName = strings.TrimSpace(item.Name)
+		}
+		if displayName == "" {
+			displayName = modelID
+		}
+		contextWindow := item.ModelContextWindow.DefaultLength
+		if contextWindow <= 0 {
+			contextWindow = item.MaxInputTokens
+		}
+		if contextWindow <= 0 {
+			contextWindow = item.ContextWindow
+		}
+		maxOutput := item.MaxOutputTokens
+		if maxOutput <= 0 {
+			maxOutput = item.MaxTokens
+		}
+		modalities := []string{"text"}
+		if item.SupportsImages {
+			modalities = append(modalities, "image")
+		}
+		reasoning := item.SupportsReasoning || item.OnlyReasoning || len(item.Reasoning.SupportedEfforts) > 0
+		description := strings.TrimSpace(item.Description)
+		if description == "" {
+			description = "WorkBuddy model from the authenticated account catalogue."
+		}
+		items = append(items, map[string]any{
+			"id": modelID, "actual_model_id": upstreamID, "display_name": displayName,
+			"description": description, "reasoning": reasoning,
+			"default_reasoning_level":    item.Reasoning.DefaultEffort,
+			"supported_reasoning_levels": item.Reasoning.SupportedEfforts,
+			"reasoning_can_be_disabled":  item.Reasoning.CanDisableThinking,
+			"only_reasoning":             item.OnlyReasoning,
+			"input_modalities":           modalities, "context_window": contextWindow,
+			"supported_context_windows": item.ModelContextWindow.SupportedLengths,
+			"max_output_tokens":         maxOutput, "supports_vision": item.SupportsImages,
+			"supports_thinking": reasoning, "supports_tool_call": item.SupportsToolCall,
+			"source": "workbuddy_live", "sort_order": index,
+		})
+	}
+	if len(models) == 0 {
+		return nil, nil, newUpstreamModelSyncUpstreamError("WorkBuddy returned no usable models", nil)
+	}
+	body, err := json.Marshal(map[string]any{"object": "list", "data": items, "source": "workbuddy_live"})
+	if err != nil {
+		return nil, nil, newUpstreamModelSyncInternalError("Failed to encode WorkBuddy model list", err)
+	}
+	return models, body, nil
+}
+
+func fallbackCodeBuddyUpstreamModels() ([]string, []byte, error) {
+	available := make([]codeBuddyAvailableModel, 0, len(codebuddy.Models))
+	for _, model := range codebuddy.Models {
+		available = append(available, codeBuddyAvailableModel{
+			ID: model.Upstream, Name: model.DisplayName, DisplayName: model.DisplayName,
+			ContextWindow: int64(model.ContextWindow), MaxTokens: 32000,
+		})
+	}
+	return buildCodeBuddyUpstreamModels(available, "codebuddy_fallback")
+}
+
+func fallbackCodeBuddyChinaUpstreamModels() ([]string, []byte, error) {
+	models := make([]string, 0, len(codebuddychina.Models))
+	items := make([]map[string]any, 0, len(codebuddychina.Models))
+	for index, model := range codebuddychina.Models {
+		models = append(models, model.ID)
+		modalities := []string{"text"}
+		if model.Upstream == "glm-5v-turbo" {
+			modalities = append(modalities, "image")
+		}
+		items = append(items, map[string]any{
+			"id": model.ID, "actual_model_id": model.Upstream, "display_name": model.DisplayName,
+			"description": "CodeBuddy China curated model.", "family": model.Family,
+			"input_modalities": modalities, "supports_vision": len(modalities) > 1,
+			"source": "codebuddy_china_curated", "sort_order": index,
+		})
+	}
+	body, err := json.Marshal(map[string]any{"object": "list", "data": items, "source": "codebuddy_china_curated"})
+	if err != nil {
+		return nil, nil, newUpstreamModelSyncInternalError("Failed to encode CodeBuddy China model list", err)
+	}
+	return models, body, nil
+}
+
+func buildCodeBuddyUpstreamModels(available []codeBuddyAvailableModel, source string) ([]string, []byte, error) {
+	models := make([]string, 0, len(available))
+	items := make([]map[string]any, 0, len(available))
+	seen := make(map[string]struct{}, len(available))
+	for index, item := range available {
+		upstreamID := strings.TrimSpace(item.ID)
+		model := codebuddy.ResolveModel(upstreamID)
+		modelID := model.ID
+		if upstreamID == "" {
+			modelID = "cb/"
+		}
+		key := strings.ToLower(modelID)
+		if _, duplicate := seen[key]; duplicate {
+			continue
+		}
+		seen[key] = struct{}{}
+		models = append(models, modelID)
+		displayName := strings.TrimSpace(item.DisplayName)
+		if displayName == "" {
+			displayName = strings.TrimSpace(item.Name)
+		}
+		if displayName == "" {
+			displayName = model.DisplayName
+		}
+		if displayName == "" {
+			displayName = modelID
+		}
+		contextWindow := item.ContextWindow
+		if contextWindow <= 0 {
+			contextWindow = int64(model.ContextWindow)
+		}
+		maxTokens := item.MaxTokens
+		if maxTokens <= 0 {
+			maxTokens = 32000
+		}
+		reasoning := model.Reasoning || codeBuddyModelLooksReasoning(upstreamID)
+		description := strings.TrimSpace(item.Description)
+		if description == "" {
+			description = "CodeBuddy model via the configured account."
+		}
+		modalities := []string{"text"}
+		if model.Vision {
+			modalities = append(modalities, "image")
+		}
+		items = append(items, map[string]any{
+			"id": modelID, "actual_model_id": upstreamID, "display_name": displayName,
+			"description": description, "reasoning": reasoning, "input_modalities": modalities,
+			"context_window": contextWindow, "max_output_tokens": maxTokens,
+			"supports_vision": model.Vision, "supports_thinking": reasoning, "source": source, "sort_order": index,
+		})
+	}
+	body, err := json.Marshal(map[string]any{"object": "list", "data": items, "source": source})
+	if err != nil {
+		return nil, nil, newUpstreamModelSyncInternalError("Failed to encode CodeBuddy model list", err)
+	}
+	return models, body, nil
+}
+
+func codeBuddyModelLooksReasoning(modelID string) bool {
+	modelID = strings.ToLower(modelID)
+	return strings.Contains(modelID, "gpt-5") || strings.Contains(modelID, "gemini") || strings.Contains(modelID, "deepseek") || strings.Contains(modelID, "kimi")
+}
+
+func stringSliceContainsFold(values []string, wanted string) bool {
+	for _, value := range values {
+		if strings.EqualFold(strings.TrimSpace(value), wanted) {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *AccountTestService) fetchKiroUpstreamModels(ctx context.Context, account *Account) ([]string, []byte, error) {
+	if s.kiroGatewayService == nil || s.kiroGatewayService.tokenProvider == nil {
+		return nil, nil, newUpstreamModelSyncConfigError("Kiro token provider is not configured", nil)
+	}
+	if s.httpUpstream == nil {
+		return nil, nil, newUpstreamModelSyncConfigError("Upstream HTTP client is not configured", nil)
+	}
+	token, err := s.kiroGatewayService.tokenProvider.Token(ctx, account)
+	if err != nil {
+		return nil, nil, newUpstreamModelSyncUpstreamError("Failed to get Kiro access token", err)
+	}
+	region := strings.ToLower(kiroCredential(account, "region"))
+	host := "q.us-east-1.amazonaws.com"
+	if strings.HasPrefix(region, "eu-") {
+		host = "q.eu-central-1.amazonaws.com"
+	}
+	machineID := stableKiroMachineID(account)
+	models := make([]json.RawMessage, 0, 32)
+	bodyLimit := resolveModelsListReadLimit(s.cfg)
+	totalModelBytes := int64(0)
+	nextToken := ""
+	seenTokens := make(map[string]struct{})
+	for page := 0; page < 20; page++ {
+		if len(nextToken) > 4096 {
+			return nil, nil, newUpstreamModelSyncUpstreamError("Kiro model list pagination token is too large", nil)
+		}
+		if nextToken != "" {
+			if _, duplicate := seenTokens[nextToken]; duplicate {
+				return nil, nil, newUpstreamModelSyncUpstreamError("Kiro model list repeated a pagination token", nil)
+			}
+			seenTokens[nextToken] = struct{}{}
+		}
+		query := url.Values{"origin": []string{"AI_EDITOR"}, "maxResults": []string{"50"}, "profileArn": []string{kiroProfileARN(account)}}
+		if nextToken != "" {
+			query.Set("nextToken", nextToken)
+		}
+		req, reqErr := http.NewRequestWithContext(ctx, http.MethodGet, "https://"+host+"/ListAvailableModels?"+query.Encode(), nil)
+		if reqErr != nil {
+			return nil, nil, newUpstreamModelSyncConfigError("Invalid Kiro model list URL", reqErr)
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Accept", "application/json")
+		req.Header.Set("User-Agent", kiroUserAgent(machineID))
+		req.Header.Set("X-Amz-User-Agent", kiroAmzUserAgent(machineID))
+		req.Header.Set("X-Amzn-Codewhisperer-Optout", "true")
+		resp, reqErr := s.httpUpstream.Do(req, upstreamModelsProxyURL(account), account.ID, account.Concurrency)
+		if reqErr != nil {
+			return nil, nil, newUpstreamModelSyncUpstreamError("Failed to request Kiro model list", reqErr)
+		}
+		body, readErr := io.ReadAll(io.LimitReader(resp.Body, bodyLimit+1))
+		_ = resp.Body.Close()
+		if readErr != nil {
+			return nil, nil, newUpstreamModelSyncUpstreamError("Failed to read Kiro model list", readErr)
+		}
+		if int64(len(body)) > bodyLimit {
+			return nil, nil, newUpstreamModelSyncUpstreamError("Kiro model list response is too large", nil)
+		}
+		if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+			return nil, nil, &UpstreamModelSyncError{Kind: UpstreamModelSyncErrorUpstream, Message: fmt.Sprintf("Kiro model list request failed with HTTP %d", resp.StatusCode), StatusCode: resp.StatusCode}
+		}
+		var pageResult struct {
+			Models    []json.RawMessage `json:"models"`
+			NextToken string            `json:"nextToken"`
+		}
+		if err := json.Unmarshal(body, &pageResult); err != nil {
+			return nil, nil, newUpstreamModelSyncUpstreamError("Kiro model list response was not valid JSON", err)
+		}
+		for _, rawModel := range pageResult.Models {
+			totalModelBytes += int64(len(rawModel))
+			if totalModelBytes > bodyLimit {
+				return nil, nil, newUpstreamModelSyncUpstreamError("Kiro model catalog is too large", nil)
+			}
+			normalized, normalizeErr := normalizeKiroModelEntry(rawModel)
+			if normalizeErr != nil {
+				return nil, nil, newUpstreamModelSyncUpstreamError("Kiro model list response contained an invalid model", normalizeErr)
+			}
+			models = append(models, normalized)
+		}
+		if strings.TrimSpace(pageResult.NextToken) == "" {
+			nextToken = ""
+			break
+		}
+		nextToken = pageResult.NextToken
+	}
+	if strings.TrimSpace(nextToken) != "" {
+		return nil, nil, newUpstreamModelSyncUpstreamError("Kiro model list exceeded the pagination limit", nil)
+	}
+	combined, err := json.Marshal(struct {
+		Models []json.RawMessage `json:"models"`
+	}{Models: models})
+	if err != nil {
+		return nil, nil, newUpstreamModelSyncInternalError("Failed to normalize Kiro model list", err)
+	}
+	ids, err := extractUpstreamModelIDs(combined)
+	if err != nil {
+		return nil, nil, newUpstreamModelSyncUpstreamError("Kiro model list response was not valid JSON", err)
+	}
+	if len(ids) == 0 {
+		return nil, nil, newUpstreamModelSyncUpstreamError("Kiro returned no supported models", nil)
+	}
+	return ids, combined, nil
+}
+
+type kiroUpstreamModel struct {
+	ModelID                            string          `json:"modelId"`
+	ModelName                          string          `json:"modelName"`
+	Description                        string          `json:"description"`
+	SupportedInputTypes                []string        `json:"supportedInputTypes"`
+	TokenLimits                        kiroTokenLimits `json:"tokenLimits"`
+	AdditionalModelRequestFieldsSchema json.RawMessage `json:"additionalModelRequestFieldsSchema"`
+}
+
+type kiroTokenLimits struct {
+	MaxInputTokens  int64 `json:"maxInputTokens"`
+	MaxOutputTokens int64 `json:"maxOutputTokens"`
+}
+
+func normalizeKiroModelEntry(raw json.RawMessage) (json.RawMessage, error) {
+	var model kiroUpstreamModel
+	if err := json.Unmarshal(raw, &model); err != nil {
+		return nil, err
+	}
+	modelID := strings.TrimSpace(model.ModelID)
+	if modelID == "" {
+		return nil, errors.New("modelId is missing")
+	}
+	reasoning := kiroSchemaSupportsThinking(model.AdditionalModelRequestFieldsSchema)
+	entry := map[string]any{
+		"id":                modelID,
+		"modelId":           modelID,
+		"display_name":      strings.TrimSpace(model.ModelName),
+		"description":       strings.TrimSpace(model.Description),
+		"reasoning":         reasoning,
+		"input_modalities":  normalizeCodexInputModalities(model.SupportedInputTypes),
+		"context_window":    model.TokenLimits.MaxInputTokens,
+		"max_output_tokens": model.TokenLimits.MaxOutputTokens,
+	}
+	if reasoning {
+		entry["default_reasoning_level"] = "medium"
+		entry["supported_reasoning_levels"] = []string{"low", "medium", "high"}
+	}
+	return json.Marshal(entry)
+}
+
+func kiroSchemaSupportsThinking(raw json.RawMessage) bool {
+	if len(raw) == 0 || string(raw) == "null" {
+		return false
+	}
+	var schema map[string]any
+	if json.Unmarshal(raw, &schema) != nil {
+		return false
+	}
+	properties, _ := schema["properties"].(map[string]any)
+	_, supported := properties["thinking"]
+	return supported
+}
+
 func (s *AccountTestService) buildUpstreamModelsRequest(ctx context.Context, account *Account) (*http.Request, error) {
 	switch {
 	case account.Platform == PlatformAntigravity:
 		return s.buildAntigravityAPIKeyModelsRequest(ctx, account)
+	case account.Platform == PlatformKiro:
+		return nil, newUpstreamModelSyncUnsupportedError("Kiro model discovery uses its native paginated endpoint", nil)
 	case account.IsGrok():
 		return s.buildGrokUpstreamModelsRequest(ctx, account)
 	case account.IsOpenAI() || account.IsCNProvider():
@@ -1467,6 +2062,12 @@ func extractUpstreamModelIDsWithSelector(body []byte, selectID func(upstreamMode
 
 func upstreamModelEntryID(entry upstreamModelEntry) string {
 	modelID := strings.TrimSpace(entry.ID)
+	if modelID == "" {
+		modelID = strings.TrimSpace(entry.ModelID)
+	}
+	if modelID == "" {
+		modelID = strings.TrimSpace(entry.ModelIDSnake)
+	}
 	if modelID == "" {
 		modelID = strings.TrimSpace(entry.Slug)
 	}

@@ -62,9 +62,10 @@ var definitions = []Definition{
 	// These providers have provider-specific adapters in the Neonix contract.
 	// Keep their storage platform stable until each adapter is migrated; mapping
 	// them to openai would silently route credentials through the wrong upstream.
-	{ID: "kiro", Category: CategoryProvider, Routable: true, OAuth: false, Manual: true, TargetPlatform: "kiro", AccountType: "apikey"},
+	{ID: "kiro", Category: CategoryProvider, Routable: true, OAuth: true, Manual: true, TargetPlatform: "kiro", AccountType: "oauth"},
 	{ID: "qoder", Category: CategoryProvider, Routable: true, OAuth: false, Manual: true, TargetPlatform: "qoder", AccountType: "apikey"},
-	{ID: "codebuddy", Category: CategoryProvider, Routable: true, OAuth: false, Manual: true, TargetPlatform: "codebuddy", AccountType: "apikey"},
+	{ID: "codebuddy", Category: CategoryProvider, Routable: true, OAuth: true, Manual: true, TargetPlatform: "codebuddy", AccountType: "oauth"},
+	{ID: "workbuddy", Category: CategoryProvider, Routable: true, OAuth: true, Manual: true, TargetPlatform: "workbuddy", AccountType: "oauth"},
 	{ID: "codebuddy-china", Category: CategoryProvider, Routable: true, OAuth: false, Manual: true, TargetPlatform: "codebuddy-china", AccountType: "apikey"},
 	{ID: "github", Category: CategoryIdentity, Manual: true, AccountType: "oauth"},
 	{ID: "outlook", Category: CategoryIdentity, OAuth: true, AccountType: "oauth"},

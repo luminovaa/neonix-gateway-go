@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/luminovaa/neonix-gateway-go/internal/service"
 	"github.com/gin-gonic/gin"
+	"github.com/luminovaa/neonix-gateway-go/internal/service"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
@@ -63,6 +63,26 @@ func TestGatewayChatAntigravityCredentialFailureReturnsActionableMessage(t *test
 	require.Contains(t, recorder.Body.String(), service.AntigravityCredentialRejectedClientMessage)
 	require.NotContains(t, strings.ToLower(recorder.Body.String()), "bearer")
 	require.NotContains(t, strings.ToLower(recorder.Body.String()), "refresh_token")
+}
+
+func TestGatewayChatKiroCredentialFailureReturnsProviderSpecificMessage(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+
+	(&GatewayHandler{}).handleCCFailoverExhausted(c, &service.UpstreamFailoverError{
+		StatusCode:       http.StatusUnauthorized,
+		Stage:            service.GatewayFailureStageAccountAuth,
+		Scope:            service.GatewayFailureScopeAccount,
+		Reason:           service.KiroCredentialUnavailableReason,
+		ClientStatusCode: http.StatusServiceUnavailable,
+		ClientMessage:    service.KiroCredentialUnavailableClientMessage,
+		ResponseBody:     []byte(`{"error":"refresh_token=must-not-leak"}`),
+	}, false)
+
+	require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+	require.Contains(t, recorder.Body.String(), service.KiroCredentialUnavailableClientMessage)
+	require.NotContains(t, recorder.Body.String(), "refresh_token")
 }
 
 func TestOpenAIAccessStateCredentialFailureUsesTypedSafeResponse(t *testing.T) {

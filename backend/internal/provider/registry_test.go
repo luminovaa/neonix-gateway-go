@@ -3,7 +3,7 @@ package provider
 import "testing"
 
 func TestRegistryCoversNeonixProviderGroups(t *testing.T) {
-	for _, id := range []string{"antigravity", "codex", "grok", "m365", "oc", "kiro", "qoder", "codebuddy", "codebuddy-china"} {
+	for _, id := range []string{"antigravity", "codex", "grok", "m365", "oc", "kiro", "qoder", "codebuddy", "workbuddy", "codebuddy-china"} {
 		definition, ok := Lookup(id)
 		if !ok || definition.Category != CategoryProvider || !definition.Routable {
 			t.Fatalf("%s is not a routable provider: %+v, %v", id, definition, ok)
@@ -31,7 +31,7 @@ func TestRegistryMarksDeprecatedProviders(t *testing.T) {
 }
 
 func TestRegistryKeepsUnmigratedProviderPlatformsStable(t *testing.T) {
-	for _, id := range []string{"kiro", "qoder", "codebuddy", "codebuddy-china"} {
+	for _, id := range []string{"kiro", "qoder", "codebuddy", "workbuddy", "codebuddy-china"} {
 		definition, ok := Lookup(id)
 		if !ok {
 			t.Fatalf("missing provider %s", id)
@@ -39,6 +39,20 @@ func TestRegistryKeepsUnmigratedProviderPlatformsStable(t *testing.T) {
 		if definition.TargetPlatform != id {
 			t.Fatalf("provider %s must not be routed through an unrelated adapter: %+v", id, definition)
 		}
+	}
+}
+
+func TestRegistryCodeBuddySupportsDeviceOAuthAndLegacyManualCredentials(t *testing.T) {
+	definition, ok := Lookup("codebuddy")
+	if !ok || !definition.OAuth || !definition.Manual || definition.AccountType != "oauth" {
+		t.Fatalf("unexpected CodeBuddy registry definition: %+v, %v", definition, ok)
+	}
+}
+
+func TestRegistryKiroSupportsGoogleOAuthAndManualImport(t *testing.T) {
+	definition, ok := Lookup("kiro")
+	if !ok || !definition.OAuth || !definition.Manual || definition.AccountType != "oauth" {
+		t.Fatalf("unexpected Kiro registry definition: %+v, %v", definition, ok)
 	}
 }
 

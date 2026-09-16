@@ -99,6 +99,10 @@ func ProvideGatewayHandler(
 	openAIGatewayService *service.OpenAIGatewayService,
 	geminiCompatService *service.GeminiMessagesCompatService,
 	antigravityGatewayService *service.AntigravityGatewayService,
+	kiroGatewayService *service.KiroGatewayService,
+	qoderGatewayService *service.QoderGatewayService,
+	codeBuddyGatewayService *service.CodeBuddyGatewayService,
+	codeBuddyChinaGatewayService *service.CodeBuddyChinaGatewayService,
 	userService *service.UserService,
 	concurrencyService *service.ConcurrencyService,
 	billingCacheService *service.BillingCacheService,
@@ -112,9 +116,12 @@ func ProvideGatewayHandler(
 	settingService *service.SettingService,
 	coordinator *securityaudit.Coordinator,
 ) *GatewayHandler {
-	h := NewGatewayHandler(gatewayService, openAIGatewayService, geminiCompatService, antigravityGatewayService,
+	h := NewGatewayHandler(gatewayService, openAIGatewayService, geminiCompatService, antigravityGatewayService, kiroGatewayService,
 		userService, concurrencyService, billingCacheService, usageService, apiKeyService, usageRecordWorkerPool,
 		errorPassthroughService, contentModerationService, userMsgQueueService, cfg, settingService)
+	h.SetQoderGatewayService(qoderGatewayService)
+	h.SetCodeBuddyGatewayService(codeBuddyGatewayService)
+	h.SetCodeBuddyChinaGatewayService(codeBuddyChinaGatewayService)
 	h.securityAuditCoordinator = coordinator
 	return h
 }
@@ -231,69 +238,80 @@ func ProvideHandlers(
 	}
 }
 
+// ProvideNeonixAdminHandlers contains only the operator control-plane handlers
+// registered by RegisterNeonixCompatibilityRoutes. Inherited Sub2API admin
+// handlers remain source-compatible without pulling their SaaS dependencies
+// into the production Wire graph.
+func ProvideNeonixAdminHandlers(
+	groupHandler *admin.GroupHandler,
+	accountHandler *admin.AccountHandler,
+	registerHandler *admin.RegisterHandler,
+	upstreamBillingProbe *service.UpstreamBillingProbeService,
+	ollamaCloudUsage *service.OllamaCloudUsageService,
+) *AdminHandlers {
+	accountHandler.SetUpstreamBillingProbeService(upstreamBillingProbe)
+	accountHandler.SetOllamaCloudUsageService(ollamaCloudUsage)
+	return &AdminHandlers{Group: groupHandler, Account: accountHandler, Register: registerHandler}
+}
+
+// ProvideOperatorAuthHandler deliberately omits dependencies used only by
+// public registration and invitation flows.
+func ProvideOperatorAuthHandler(
+	cfg *config.Config,
+	authService *service.AuthService,
+	userService *service.UserService,
+) *AuthHandler {
+	return &AuthHandler{cfg: cfg, authService: authService, userService: userService}
+}
+
+// ProvideNeonixHandlers is the production aggregate for the private operator
+// UI and gateway. Dormant SaaS handlers therefore do not keep their services
+// alive through dependency injection.
+func ProvideNeonixHandlers(
+	authHandler *AuthHandler,
+	apiKeyHandler *APIKeyHandler,
+	usageHandler *UsageHandler,
+	adminHandlers *AdminHandlers,
+	gatewayHandler *GatewayHandler,
+	openaiGatewayHandler *OpenAIGatewayHandler,
+	settingHandler *SettingHandler,
+	asyncImageHandler *AsyncImageHandler,
+	batchImageHandler *BatchImageHandler,
+) *Handlers {
+	if apiKeyHandler != nil && usageHandler != nil {
+		apiKeyHandler.SetUsageService(usageHandler.usageService)
+	}
+	return &Handlers{
+		Auth:          authHandler,
+		APIKey:        apiKeyHandler,
+		Usage:         usageHandler,
+		Admin:         adminHandlers,
+		Gateway:       gatewayHandler,
+		OpenAIGateway: openaiGatewayHandler,
+		Setting:       settingHandler,
+		AsyncImage:    asyncImageHandler,
+		BatchImage:    batchImageHandler,
+	}
+}
+
 // ProviderSet is the Wire provider set for all handlers
 var ProviderSet = wire.NewSet(
 	// Top-level handlers
-	NewAuthHandler,
-	NewUserHandler,
+	ProvideOperatorAuthHandler,
 	NewAPIKeyHandler,
 	NewUsageHandler,
-	NewRedeemHandler,
-	NewSubscriptionHandler,
-	NewAnnouncementHandler,
-	NewChannelMonitorUserHandler,
-	NewChannelMonitorV2Handler,
 	ProvideGatewayHandler,
 	ProvideOpenAIGatewayHandler,
-	NewTotpHandler,
-	NewPasskeyHandler,
 	ProvideSettingHandler,
-	NewPaymentHandler,
-	NewPaymentWebhookHandler,
-	NewAvailableChannelHandler,
-	NewModelPlazaHandler,
 	NewAsyncImageHandler,
 	ProvideBatchImageHandler,
 
 	// Admin handlers
-	admin.NewDashboardHandler,
-	admin.NewUserHandler,
 	admin.NewGroupHandlerWithConfig,
 	admin.ProvideAccountHandler,
 	admin.NewRegisterHandler,
-	admin.NewAnnouncementHandler,
-	admin.NewDataManagementHandler,
-	admin.NewBackupHandler,
-	admin.NewOAuthHandler,
-	admin.NewOpenAIOAuthHandler,
-	admin.NewGeminiOAuthHandler,
-	admin.NewAntigravityOAuthHandler,
-	admin.NewGrokOAuthHandler,
-	admin.NewCNProviderHandler,
-	admin.NewProxyHandler,
-	admin.NewRedeemHandler,
-	admin.NewPromoHandler,
-	ProvideAdminSettingHandler,
-	admin.NewOpsHandler,
-	ProvideSystemHandler,
-	admin.NewSubscriptionHandler,
-	admin.NewUsageHandler,
-	admin.NewUserAttributeHandler,
-	admin.NewErrorPassthroughHandler,
-	admin.NewTLSFingerprintProfileHandler,
-	admin.NewPluginHandler,
-	admin.NewAdminAPIKeyHandler,
-	admin.NewScheduledTestHandler,
-	admin.NewChannelHandler,
-	admin.NewChannelMonitorHandler,
-	admin.NewChannelMonitorRequestTemplateHandler,
-	admin.NewContentModerationHandler,
-	admin.NewPaymentHandler,
-	admin.NewAffiliateHandler,
-	admin.NewComplianceHandler,
-	admin.NewAuditLogHandler,
 
 	// AdminHandlers and Handlers constructors
-	ProvideAdminHandlers,
-	ProvideHandlers,
+	ProvideNeonixAdminHandlers,
+	ProvideNeonixHandlers,
 )

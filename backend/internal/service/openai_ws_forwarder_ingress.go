@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/luminovaa/neonix-gateway-go/internal/pkg/openai"
 	coderws "github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/openai"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
@@ -139,7 +139,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			}
 			// 首轮准入由握手路径完成；后续 response.create 会在写入上游前
 			// 依次回调 BeforeRequest 和 BeforeTurn，并在终止或失败时回调
-			// AfterTurn，从而覆盖 turn 级利润复核、定价冻结和并发槽位释放。
+			// AfterTurn，从而覆盖 turn 级定价冻结和并发槽位释放。
 			return s.proxyResponsesWebSocketV2Passthrough(
 				ctx,
 				c,

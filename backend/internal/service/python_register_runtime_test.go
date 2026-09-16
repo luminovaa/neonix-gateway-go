@@ -11,9 +11,28 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
+
+type registerRuntimeCancelledTransport struct{}
+
+func (registerRuntimeCancelledTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	<-request.Context().Done()
+	return nil, request.Context().Err()
+}
+
+func TestPythonRegisterRuntimeHonorsCancellation(t *testing.T) {
+	runtime := NewPythonRegisterRuntimeWithConfig("http://worker.test", "key", &http.Client{Transport: registerRuntimeCancelledTransport{}}, "")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	started := time.Now()
+	_, err := runtime.Status(ctx, "job_cancelled")
+	require.Error(t, err)
+	require.Less(t, time.Since(started), time.Second)
+	require.Equal(t, "REGISTER_RUNTIME_UNAVAILABLE", RegisterRuntimeErrorCode(err))
+}
 
 func TestPythonRegisterRuntimeUsesAuthenticatedFixedWorkerRoutes(t *testing.T) {
 	var mu sync.Mutex
@@ -42,6 +61,8 @@ func TestPythonRegisterRuntimeUsesAuthenticatedFixedWorkerRoutes(t *testing.T) {
 			_, _ = io.WriteString(w, `{"cancelled":true}`)
 		case "/job/bfs-lockout":
 			_, _ = io.WriteString(w, `{"bfs_blocked_until":12345}`)
+		case "/capabilities":
+			_, _ = io.WriteString(w, `{"camoufox":{"available":true,"packageInstalled":true,"binaryAvailable":true,"supportedProviders":["grok"]}}`)
 		default:
 			http.NotFound(w, r)
 		}
@@ -68,6 +89,10 @@ func TestPythonRegisterRuntimeUsesAuthenticatedFixedWorkerRoutes(t *testing.T) {
 	lockout, err := runtime.BFSLockout(context.Background())
 	require.NoError(t, err)
 	require.Equal(t, int64(12345), lockout.BFSBlockedUntil)
+	capabilities, err := runtime.Capabilities(context.Background())
+	require.NoError(t, err)
+	require.True(t, capabilities["camoufox"].Available)
+	require.Equal(t, []string{"grok"}, capabilities["camoufox"].SupportedProviders)
 
 	mu.Lock()
 	defer mu.Unlock()
@@ -77,6 +102,7 @@ func TestPythonRegisterRuntimeUsesAuthenticatedFixedWorkerRoutes(t *testing.T) {
 		"GET /job/job_123/logs",
 		"POST /job/job_123/cancel",
 		"GET /job/bfs-lockout",
+		"GET /capabilities",
 	}, seen)
 }
 
@@ -105,6 +131,8 @@ func TestPythonRegisterRuntimeClassifiesFailuresWithoutLeakingWorkerBody(t *test
 	}{
 		{http.StatusBadRequest, "REGISTER_PAYLOAD_INVALID"},
 		{http.StatusUnprocessableEntity, "REGISTER_PAYLOAD_INVALID"},
+		{http.StatusUnauthorized, "REGISTER_RUNTIME_UNAUTHORIZED"},
+		{http.StatusForbidden, "REGISTER_RUNTIME_UNAUTHORIZED"},
 		{http.StatusNotFound, "REGISTER_JOB_NOT_FOUND"},
 		{http.StatusConflict, "REGISTER_JOB_CONFLICT"},
 		{http.StatusTooManyRequests, "REGISTER_BFS_LOCKOUT"},
@@ -132,6 +160,32 @@ func TestPythonRegisterRuntimeRejectsOversizedAndInvalidResponses(t *testing.T) 
 		runtime := NewPythonRegisterRuntimeWithConfig(server.URL, "key", server.Client(), "")
 		_, err := runtime.Status(context.Background(), "job_1")
 		server.Close()
-		require.Equal(t, "REGISTER_RUNTIME_UNAVAILABLE", RegisterRuntimeErrorCode(err))
+		if body == "{not-json}" {
+			require.Equal(t, "REGISTER_RUNTIME_PROTOCOL_INVALID", RegisterRuntimeErrorCode(err))
+		} else {
+			require.Equal(t, "REGISTER_RUNTIME_UNAVAILABLE", RegisterRuntimeErrorCode(err))
+		}
 	}
+}
+
+func TestPythonRegisterRuntimeRejectsMismatchedAndInvalidJobStatus(t *testing.T) {
+	for _, body := range []string{
+		"{\"job_id\":\"other_job\",\"status\":\"running\"}",
+		"{\"job_id\":\"job_1\",\"status\":\"mystery\"}",
+		"{\"status\":\"running\"}",
+	} {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = io.WriteString(w, body)
+		}))
+		runtime := NewPythonRegisterRuntimeWithConfig(server.URL, "key", server.Client(), "")
+		_, err := runtime.Status(context.Background(), "job_1")
+		server.Close()
+		require.Equal(t, "REGISTER_RUNTIME_PROTOCOL_INVALID", RegisterRuntimeErrorCode(err))
+		require.Equal(t, http.StatusBadGateway, RegisterRuntimePublicStatus(err))
+	}
+}
+
+func TestRegisterRuntimeInternalUnauthorizedMapsToServiceUnavailable(t *testing.T) {
+	err := registerRuntimeError("REGISTER_RUNTIME_UNAUTHORIZED", http.StatusUnauthorized, nil)
+	require.Equal(t, http.StatusServiceUnavailable, RegisterRuntimePublicStatus(err))
 }

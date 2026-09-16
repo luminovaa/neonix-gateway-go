@@ -1436,7 +1436,6 @@ func (r *userRepository) RemoveGroupFromUserAllowedGroups(ctx context.Context, u
 func (r *userRepository) GetFirstAdmin(ctx context.Context) (*service.User, error) {
 	m, err := r.client.User.Query().
 		Where(
-			dbuser.RoleEQ(service.RoleAdmin),
 			dbuser.StatusEQ(service.StatusActive),
 		).
 		Order(dbent.Asc(dbuser.FieldID)).

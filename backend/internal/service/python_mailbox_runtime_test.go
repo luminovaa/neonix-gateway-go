@@ -12,6 +12,24 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type mailboxCancelledTransport struct{}
+
+func (mailboxCancelledTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	<-request.Context().Done()
+	return nil, request.Context().Err()
+}
+
+func TestPythonMailboxRuntimeHonorsCancellation(t *testing.T) {
+	runtime := NewPythonMailboxRuntimeWithConfig("http://worker.test", "key", &http.Client{Transport: mailboxCancelledTransport{}}, "")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	started := time.Now()
+	_, err := runtime.Poll(ctx, MailboxPollInput{Email: "a@example.com", ClientID: "client", RefreshToken: "secret", Timeout: 3 * time.Second})
+	require.Error(t, err)
+	require.Less(t, time.Since(started), time.Second)
+	require.Equal(t, "MAILBOX_RUNTIME_UNAVAILABLE", MailboxErrorCode(err))
+}
+
 type mailboxRuntimeRoundTripper struct {
 	status int
 	body   string

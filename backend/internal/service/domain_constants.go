@@ -54,10 +54,44 @@ const (
 	PlatformDeepseek  = domain.PlatformDeepseek
 	PlatformMiniMax   = domain.PlatformMiniMax
 	PlatformComposite = domain.PlatformComposite
-	// PlatformKiro is retained for unsupported-platform threshold tests and legacy
-	// account rows. Scheduling-threshold evaluation never pauses kiro accounts.
-	PlatformKiro = "kiro"
+	// PlatformKiro routes Kiro/Amazon Q Developer credentials through the native
+	// AWS EventStream adapter. Scheduling-threshold evaluation never pauses it.
+	PlatformKiro = domain.PlatformKiro
+	// PlatformQoder routes Qoder PAT credentials through the native COSY adapter.
+	PlatformQoder = domain.PlatformQoder
+	// PlatformCodeBuddy routes CodeBuddy CLI OAuth and legacy credentials through
+	// the native CodeBuddy SSE adapter. CodeBuddy China remains a separate slice.
+	PlatformCodeBuddy = domain.PlatformCodeBuddy
+	// PlatformWorkBuddy routes only workbuddy.ai CLI OAuth credentials. Model
+	// names remain cb/*; the selected group is the routing boundary.
+	PlatformWorkBuddy = domain.PlatformWorkBuddy
+	// PlatformCodeBuddyChina uses a static regional bearer token and a separate
+	// model namespace; it must never enter the CodeBuddy .ai OAuth adapter.
+	PlatformCodeBuddyChina = domain.PlatformCodeBuddyChina
 )
+
+var concreteGatewayPlatforms = [...]string{
+	PlatformAnthropic,
+	PlatformGemini,
+	PlatformOpenAI,
+	PlatformAntigravity,
+	PlatformGrok,
+	PlatformKimi,
+	PlatformZhipu,
+	PlatformDeepseek,
+	PlatformMiniMax,
+	PlatformKiro,
+	PlatformQoder,
+	PlatformCodeBuddy,
+	PlatformWorkBuddy,
+	PlatformCodeBuddyChina,
+}
+
+// ConcreteGatewayPlatforms returns every platform that can own a routable
+// gateway group. The copy prevents callers from mutating the canonical list.
+func ConcreteGatewayPlatforms() []string {
+	return append([]string(nil), concreteGatewayPlatforms[:]...)
+}
 
 // 账号接入模式（国产供应商）：按量付费 vs Coding Plan。
 const (

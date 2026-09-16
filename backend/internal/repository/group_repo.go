@@ -9,12 +9,12 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/lib/pq"
 	dbent "github.com/luminovaa/neonix-gateway-go/ent"
 	"github.com/luminovaa/neonix-gateway-go/ent/group"
 	"github.com/luminovaa/neonix-gateway-go/internal/pkg/logger"
 	"github.com/luminovaa/neonix-gateway-go/internal/pkg/pagination"
 	"github.com/luminovaa/neonix-gateway-go/internal/service"
-	"github.com/lib/pq"
 
 	entsql "entgo.io/ent/dialect/sql"
 )
@@ -151,10 +151,7 @@ func createGroupRecord(ctx context.Context, client *dbent.Client, groupIn *servi
 		SetPeakRateEnabled(groupIn.PeakRateEnabled).
 		SetPeakStart(groupIn.PeakStart).
 		SetPeakEnd(groupIn.PeakEnd).
-		SetPeakRateMultiplier(groupIn.PeakRateMultiplier).
-		SetProfitControlEnabled(groupIn.ProfitControlEnabled).
-		SetProfitMinMargin(groupIn.ProfitMinMargin).
-		SetProfitSafetyBuffer(groupIn.ProfitSafetyBuffer)
+		SetPeakRateMultiplier(groupIn.PeakRateMultiplier)
 	if groupIn.DuplicateOperationID != "" {
 		builder = builder.SetDuplicateOperationID(groupIn.DuplicateOperationID)
 	}
@@ -331,10 +328,7 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetPeakRateEnabled(groupIn.PeakRateEnabled).
 		SetPeakStart(groupIn.PeakStart).
 		SetPeakEnd(groupIn.PeakEnd).
-		SetPeakRateMultiplier(groupIn.PeakRateMultiplier).
-		SetProfitControlEnabled(groupIn.ProfitControlEnabled).
-		SetProfitMinMargin(groupIn.ProfitMinMargin).
-		SetProfitSafetyBuffer(groupIn.ProfitSafetyBuffer)
+		SetPeakRateMultiplier(groupIn.PeakRateMultiplier)
 
 	// 显式处理可空字段：nil 需要 clear，非 nil 需要 set。
 	if groupIn.DailyLimitUSD != nil {

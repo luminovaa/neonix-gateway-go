@@ -202,7 +202,7 @@ func TestEnsureDefaultCompatKeyAddsDefaultForCustomOnlyInstall(t *testing.T) {
 	require.Len(t, repo.keys, 2)
 }
 
-func TestAPIKeyCompatUsageAndAccessStatsUseGoAggregates(t *testing.T) {
+func TestAPIKeyCompatUsageUsesGoAggregates(t *testing.T) {
 	repo := &compatAPIKeyRepoStub{keys: []*service.APIKey{
 		{ID: 4, UserID: 7, Name: "default", Key: "neon-default-key", Status: service.StatusAPIKeyActive, CreatedAt: time.Now()},
 	}}
@@ -210,7 +210,6 @@ func TestAPIKeyCompatUsageAndAccessStatsUseGoAggregates(t *testing.T) {
 	h.SetUsageService(service.NewUsageService(&compatUsageRepoStub{}, nil, nil, nil))
 	router := gin.New()
 	router.GET("/api/api-keys/:id/usage", withCompatSubject(h.GetUsageCompat))
-	router.GET("/api/api-keys/:id/access-stats", withCompatSubject(h.GetAccessStatsCompat))
 
 	usageReq := httptest.NewRequest(http.MethodGet, "/api/api-keys/4/usage", nil)
 	usageRec := httptest.NewRecorder()
@@ -224,16 +223,6 @@ func TestAPIKeyCompatUsageAndAccessStatsUseGoAggregates(t *testing.T) {
 	require.Equal(t, int64(4), usageEnvelope.Data.SuccessRequests)
 	require.Len(t, usageEnvelope.Data.Models, 1)
 
-	accessReq := httptest.NewRequest(http.MethodGet, "/api/api-keys/4/access-stats", nil)
-	accessRec := httptest.NewRecorder()
-	router.ServeHTTP(accessRec, accessReq)
-	require.Equal(t, http.StatusOK, accessRec.Code)
-	var accessEnvelope struct {
-		Data neonixAPIKeyAccessStats `json:"data"`
-	}
-	require.NoError(t, json.Unmarshal(accessRec.Body.Bytes(), &accessEnvelope))
-	require.Equal(t, int64(2), accessEnvelope.Data.UniqueIPs)
-	require.NotNil(t, accessEnvelope.Data.LastAccessed)
 }
 
 func TestMeCompatCanResolveLegacyTextIDForUsage(t *testing.T) {

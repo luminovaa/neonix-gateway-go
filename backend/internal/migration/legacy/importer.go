@@ -56,17 +56,18 @@ var (
 // while a single PostgreSQL transaction is open. It is never returned from
 // the importer or included in an ImportReport.
 type preparedAccount struct {
-	ID          string
-	Provider    string
-	Type        string
-	Name        string
-	Envelope    string
-	Credentials []byte
-	Extra       []byte
-	Status      string
-	Schedulable bool
-	CreatedAt   *time.Time
-	LastUsedAt  *time.Time
+	ID               string
+	Provider         string
+	Type             string
+	Name             string
+	AutomationSecret string
+	GitHubSecret     string
+	Credentials      []byte
+	Extra            []byte
+	Status           string
+	Schedulable      bool
+	CreatedAt        *time.Time
+	LastUsedAt       *time.Time
 }
 
 const findExistingAccountSQL = `
@@ -99,12 +100,18 @@ SET platform = $1,
     updated_at = NOW()
 WHERE id = $5 AND deleted_at IS NULL`
 
-const upsertCredentialEnvelopeSQL = `
-INSERT INTO account_credential_envelopes (account_id, envelope, key_version)
-VALUES ($1, $2, 1)
+const upsertRegisterAutomationSecretSQL = `
+INSERT INTO account_register_automation_secrets (account_id, password_envelope)
+VALUES ($1, $2)
 ON CONFLICT (account_id) DO UPDATE
-SET envelope = EXCLUDED.envelope,
-    key_version = EXCLUDED.key_version,
+SET password_envelope = EXCLUDED.password_envelope,
+    updated_at = NOW()`
+
+const upsertGitHubIdentitySecretSQL = `
+INSERT INTO account_github_identity_secrets (account_id, secret_envelope)
+VALUES ($1, $2)
+ON CONFLICT (account_id) DO UPDATE
+SET secret_envelope = EXCLUDED.secret_envelope,
     updated_at = NOW()`
 
 // ImportIntoPostgres applies normalized accounts in one transaction. Existing
@@ -144,8 +151,15 @@ func ImportIntoPostgres(ctx context.Context, db *sql.DB, accounts []NormalizedAc
 				account.CreatedAt, account.LastUsedAt).Scan(&existingID); err != nil {
 				return report, fmt.Errorf("%w: insert account", ErrImportDB)
 			}
-			if _, err := tx.ExecContext(ctx, upsertCredentialEnvelopeSQL, existingID, account.Envelope); err != nil {
-				return report, fmt.Errorf("%w: persist credential envelope", ErrImportDB)
+			if account.AutomationSecret != "" {
+				if _, err := tx.ExecContext(ctx, upsertRegisterAutomationSecretSQL, existingID, account.AutomationSecret); err != nil {
+					return report, fmt.Errorf("%w: persist register automation secret", ErrImportDB)
+				}
+			}
+			if account.GitHubSecret != "" {
+				if _, err := tx.ExecContext(ctx, upsertGitHubIdentitySecretSQL, existingID, account.GitHubSecret); err != nil {
+					return report, fmt.Errorf("%w: persist GitHub identity secret", ErrImportDB)
+				}
 			}
 			created++
 		case err != nil:
@@ -160,8 +174,15 @@ func ImportIntoPostgres(ctx context.Context, db *sql.DB, accounts []NormalizedAc
 			if err != nil || affected != 1 {
 				return report, fmt.Errorf("%w: account disappeared during update", ErrImportDB)
 			}
-			if _, err := tx.ExecContext(ctx, upsertCredentialEnvelopeSQL, existingID, account.Envelope); err != nil {
-				return report, fmt.Errorf("%w: persist credential envelope", ErrImportDB)
+			if account.AutomationSecret != "" {
+				if _, err := tx.ExecContext(ctx, upsertRegisterAutomationSecretSQL, existingID, account.AutomationSecret); err != nil {
+					return report, fmt.Errorf("%w: persist register automation secret", ErrImportDB)
+				}
+			}
+			if account.GitHubSecret != "" {
+				if _, err := tx.ExecContext(ctx, upsertGitHubIdentitySecretSQL, existingID, account.GitHubSecret); err != nil {
+					return report, fmt.Errorf("%w: persist GitHub identity secret", ErrImportDB)
+				}
 			}
 			updated++
 		}
@@ -196,15 +217,38 @@ func prepareAccounts(accounts []NormalizedAccount, codec *credentials.Envelope, 
 			issues = append(issues, Issue{ID: account.ID, Provider: account.SourceProvider, Severity: "blocked", Code: "ACCOUNT_TARGET_METADATA_MISSING"})
 			continue
 		}
-		credentialsMap, err := account.DecryptCredentials(codec)
+		credentialsMap, err := account.CredentialsMap()
 		if err != nil {
-			issues = append(issues, Issue{ID: account.ID, Provider: account.SourceProvider, Severity: "blocked", Code: "CREDENTIAL_ENVELOPE_INVALID"})
+			issues = append(issues, Issue{ID: account.ID, Provider: account.SourceProvider, Severity: "blocked", Code: "CREDENTIALS_INVALID"})
 			continue
 		}
 		credentialJSON, err := json.Marshal(credentialsMap)
 		if err != nil {
 			issues = append(issues, Issue{ID: account.ID, Provider: account.SourceProvider, Severity: "blocked", Code: "CREDENTIALS_SERIALIZE_FAILED"})
 			continue
+		}
+		if account.AutomationSecret != "" {
+			if codec == nil {
+				issues = append(issues, Issue{ID: account.ID, Provider: account.SourceProvider, Severity: "blocked", Code: "AUTOMATION_SECRET_ENVELOPE_INVALID"})
+				continue
+			}
+			secret, err := codec.Open(account.AutomationSecret)
+			if err != nil || strings.TrimSpace(string(secret)) == "" || len(secret) > 4096 {
+				issues = append(issues, Issue{ID: account.ID, Provider: account.SourceProvider, Severity: "blocked", Code: "AUTOMATION_SECRET_ENVELOPE_INVALID"})
+				continue
+			}
+		}
+		if account.GitHubSecret != "" {
+			if codec == nil {
+				issues = append(issues, Issue{ID: account.ID, Provider: account.SourceProvider, Severity: "blocked", Code: "GITHUB_IDENTITY_SECRET_ENVELOPE_INVALID"})
+				continue
+			}
+			secret, err := codec.Open(account.GitHubSecret)
+			var decoded legacyGitHubSecret
+			if err != nil || len(secret) == 0 || len(secret) > 1<<20 || json.Unmarshal(secret, &decoded) != nil || !validLegacyGitHubSecret(decoded) {
+				issues = append(issues, Issue{ID: account.ID, Provider: account.SourceProvider, Severity: "blocked", Code: "GITHUB_IDENTITY_SECRET_ENVELOPE_INVALID"})
+				continue
+			}
 		}
 		extra, err := importExtra(account)
 		if err != nil {
@@ -218,7 +262,7 @@ func prepareAccounts(accounts []NormalizedAccount, codec *credentials.Envelope, 
 		}
 		prepared = append(prepared, preparedAccount{
 			ID: account.ID, Provider: account.Provider, Type: account.Type,
-			Name: accountName(account), Envelope: account.Credential, Credentials: credentialJSON, Extra: extra,
+			Name: accountName(account), AutomationSecret: account.AutomationSecret, GitHubSecret: account.GitHubSecret, Credentials: credentialJSON, Extra: extra,
 			Status: importStatus(account), Schedulable: importSchedulable(account),
 			CreatedAt: createdAt, LastUsedAt: unixMillis(account.LastUsedAt),
 		})
@@ -254,6 +298,15 @@ func importExtra(account NormalizedAccount) ([]byte, error) {
 	}
 	if account.LastCheckedAt != nil {
 		extra[legacyCheckedAtKey] = *account.LastCheckedAt
+	}
+	if account.GitHubCreatedAt > 0 {
+		extra["github_created_at_ms"] = account.GitHubCreatedAt
+	}
+	if account.GitHubEligibleAt > 0 {
+		extra["github_eligible_at_ms"] = account.GitHubEligibleAt
+	}
+	if account.Enabled != nil {
+		extra["neonix_legacy_enabled"] = *account.Enabled
 	}
 	for key, raw := range map[string]json.RawMessage{
 		legacySubscriptionKey: account.Subscription,

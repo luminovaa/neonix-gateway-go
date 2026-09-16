@@ -33,9 +33,9 @@ type OpenAIRecordUsageInput struct {
 	RequestPayloadHash string
 	APIKeyService      APIKeyQuotaUpdater
 	QuotaPlatform      string // user×platform quota platform resolved by the handler before async billing.
-	// PricingAt 是请求级定价时刻（请求开始捕获，与利润门的 D 同源）：高峰因子
-	// 按该时刻计算，保证同一请求从准入到扣费不中途变价。零值回退记录时刻
-	//（既有行为），供未装配的路径（图片/异步/cyber 等）沿用。
+	// PricingAt 是请求开始时捕获的定价时刻。高峰因子按该时刻计算，保证
+	// 同一请求从开始到扣费不中途变价。零值回退记录时刻，供未装配的路径
+	//（图片/异步/cyber 等）沿用。
 	PricingAt time.Time
 	// CyberBlocked 为 true 时把该用量行标记为 cyber（request_type=cyber），计费逻辑不变。
 	CyberBlocked bool
@@ -123,8 +123,8 @@ func (s *OpenAIGatewayService) ResolveUserGroupRateMultiplier(ctx context.Contex
 	return resolver.Resolve(ctx, userID, groupID, groupDefaultMultiplier)
 }
 
-// openAIUsagePricingAt 返回本次用量记录使用的定价时刻：优先请求级 PricingAt
-// （与利润门 D 同源同刻），未装配时回退记录时刻（既有行为）。
+// openAIUsagePricingAt 返回本次用量记录使用的定价时刻：优先请求级 PricingAt，
+// 未装配时回退记录时刻。
 func openAIUsagePricingAt(input *OpenAIRecordUsageInput) time.Time {
 	if input != nil && !input.PricingAt.IsZero() {
 		return input.PricingAt
@@ -202,8 +202,8 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		multiplier = s.ResolveUserGroupRateMultiplier(ctx, user.ID, *apiKey.GroupID, apiKey.Group.RateMultiplier)
 	}
 	// token 倍率叠加高峰因子（token 计费含图片 token，图片按次倍率不受影响）。
-	// 高峰因子按请求级 PricingAt 现算（与利润门 D 同源同刻，跨峰谷请求不中途
-	// 变价）；未装配 PricingAt 的路径回退记录时刻，保持既有行为。不并入上面的
+	// 高峰因子按请求级 PricingAt 现算（跨峰谷请求不中途变价）；未装配
+	// PricingAt 的路径回退记录时刻，保持既有行为。不并入上面的
 	// Resolve，以免污染 user:group 倍率缓存。
 	baseMultiplier := multiplier
 	pricingAt := openAIUsagePricingAt(input)

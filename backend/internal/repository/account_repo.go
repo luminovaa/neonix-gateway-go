@@ -15,7 +15,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -137,31 +136,6 @@ func (r *accountRepository) Create(ctx context.Context, account *service.Account
 	if err := r.credentialEnvelopeConfigError(); err != nil {
 		return err
 	}
-	if r.credentialCodec != nil {
-		if r.client == nil {
-			return errors.New("credential envelope persistence requires an ent client")
-		}
-		tx, err := r.client.Tx(ctx)
-		if err != nil {
-			return err
-		}
-		defer func() { _ = tx.Rollback() }()
-		txClient := tx.Client()
-		if err := createAccountRecord(ctx, txClient, account); err != nil {
-			return err
-		}
-		envelope, err := sealAccountCredentials(r.credentialCodec, account.Credentials)
-		if err != nil {
-			return err
-		}
-		if err := persistAccountCredentialEnvelope(ctx, txClient, account.ID, envelope); err != nil {
-			return err
-		}
-		if err := enqueueSchedulerOutbox(ctx, txClient, service.SchedulerOutboxEventAccountChanged, &account.ID, nil, buildSchedulerGroupPayload(account.GroupIDs)); err != nil {
-			return err
-		}
-		return tx.Commit()
-	}
 	if err := createAccountRecord(ctx, r.client, account); err != nil {
 		return err
 	}
@@ -274,15 +248,6 @@ func (r *accountRepository) CreateWithAccountGroups(ctx context.Context, account
 	if err := createAccountRecord(ctx, txClient, account); err != nil {
 		return err
 	}
-	if r.credentialCodec != nil {
-		envelope, err := sealAccountCredentials(r.credentialCodec, account.Credentials)
-		if err != nil {
-			return err
-		}
-		if err := persistAccountCredentialEnvelope(ctx, txClient, account.ID, envelope); err != nil {
-			return err
-		}
-	}
 	if len(groups) > 0 {
 		builders := make([]*dbent.AccountGroupCreate, 0, len(groups))
 		for i := range groups {
@@ -375,32 +340,12 @@ func (r *accountRepository) GetByIDs(ctx context.Context, ids []int64) ([]*servi
 	if err != nil {
 		return nil, err
 	}
-	credentialEnvelopes := map[int64]string{}
-	if r.credentialCodec != nil {
-		exec := r.sql
-		if exec == nil {
-			exec = r.client
-		}
-		credentialEnvelopes, err = loadAccountCredentialEnvelopes(ctx, exec, accountIDs)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	outByID := make(map[int64]*service.Account, len(entAccounts))
 	for _, entAcc := range entAccounts {
 		out := accountEntityToService(entAcc)
 		if out == nil {
 			continue
 		}
-		if envelope, ok := credentialEnvelopes[entAcc.ID]; ok {
-			decrypted, err := openAccountCredentialEnvelope(r.credentialCodec, envelope)
-			if err != nil {
-				return nil, fmt.Errorf("account credential envelope %d is invalid", entAcc.ID)
-			}
-			out.Credentials = decrypted
-		}
-
 		// Prefer the preloaded proxy edge when available.
 		if entAcc.Edges.Proxy != nil {
 			out.Proxy = proxyEntityToService(entAcc.Edges.Proxy)
@@ -685,15 +630,6 @@ func (r *accountRepository) updateLockedAccount(
 	if err != nil {
 		return nil, err
 	}
-	if r.credentialCodec != nil {
-		envelope, err := sealAccountCredentials(r.credentialCodec, account.Credentials)
-		if err != nil {
-			return nil, err
-		}
-		if err := persistAccountCredentialEnvelope(ctx, client, account.ID, envelope); err != nil {
-			return nil, err
-		}
-	}
 	return updated, nil
 }
 
@@ -944,15 +880,6 @@ func (r *accountRepository) UpdateCredentials(ctx context.Context, id int64, cre
 	}
 	if affected == 0 {
 		return service.ErrAccountNotFound
-	}
-	if r.credentialCodec != nil {
-		envelope, err := sealAccountCredentials(r.credentialCodec, credentials)
-		if err != nil {
-			return err
-		}
-		if err := persistAccountCredentialEnvelope(ctx, client, id, envelope); err != nil {
-			return err
-		}
 	}
 	if err := enqueueSchedulerOutbox(ctx, client, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
 		return err
@@ -1406,6 +1333,390 @@ func (r *accountRepository) ListByPlatform(ctx context.Context, platform string)
 	return r.accountsToService(ctx, accounts)
 }
 
+func (r *accountRepository) ListRegisterAccountsByPlatform(ctx context.Context, platform string) ([]service.Account, error) {
+	accounts, err := r.client.Account.Query().
+		Where(dbaccount.PlatformEQ(platform)).
+		Order(dbent.Desc(dbaccount.FieldCreatedAt), dbent.Desc(dbaccount.FieldID)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return r.accountsToService(ctx, accounts)
+}
+
+func (r *accountRepository) ListGrokReloginCandidates(ctx context.Context) ([]service.RegisterReloginCandidate, int, error) {
+	accounts, err := r.ListRegisterAccountsByPlatform(ctx, service.PlatformGrok)
+	if err != nil {
+		return nil, 0, err
+	}
+	total := len(accounts)
+	eligible := make([]service.Account, 0, len(accounts))
+	ids := make([]int64, 0, len(accounts))
+	now := time.Now()
+	for i := range accounts {
+		if !isGrokReloginAccount(accounts[i], now) {
+			continue
+		}
+		eligible = append(eligible, accounts[i])
+		ids = append(ids, accounts[i].ID)
+	}
+	if len(eligible) == 0 {
+		return []service.RegisterReloginCandidate{}, total, nil
+	}
+	secrets, err := r.loadRegisterAutomationPasswords(ctx, ids)
+	if err != nil {
+		return nil, 0, err
+	}
+	result := make([]service.RegisterReloginCandidate, 0, len(eligible))
+	for i := range eligible {
+		password, ok := secrets[eligible[i].ID]
+		if !ok {
+			continue
+		}
+		credentials := make(map[string]any, len(eligible[i].Credentials))
+		for key, value := range eligible[i].Credentials {
+			credentials[key] = value
+		}
+		credentials = service.SanitizeStoredCredentials(service.PlatformGrok, credentials)
+		legacyID, _ := eligible[i].Extra["neonix_legacy_account_id"].(string)
+		if strings.TrimSpace(legacyID) == "" {
+			legacyID = strconv.FormatInt(eligible[i].ID, 10)
+		}
+		email, _ := eligible[i].Extra["neonix_legacy_email"].(string)
+		if strings.TrimSpace(email) == "" {
+			email, _ = credentials["email"].(string)
+		}
+		if strings.TrimSpace(email) == "" {
+			continue
+		}
+		result = append(result, service.RegisterReloginCandidate{
+			ID: legacyID, Email: strings.TrimSpace(email), Password: password, Provider: "grok", Credentials: credentials,
+		})
+	}
+	return result, total, nil
+}
+
+func (r *accountRepository) GrokReloginCandidateSummary(ctx context.Context) (service.RegisterReloginCandidateSummary, error) {
+	if r == nil || r.sql == nil {
+		return service.RegisterReloginCandidateSummary{}, errors.New("account repository is not configured")
+	}
+	rows, err := r.sql.QueryContext(ctx, `
+SELECT
+    COUNT(*) FILTER (WHERE
+        (
+            status IN ($2, $3, $4)
+            OR (status = $5 AND auto_pause_on_expired IS TRUE AND expires_at IS NOT NULL AND expires_at <= NOW())
+        )
+        AND EXISTS (
+            SELECT 1 FROM account_register_automation_secrets s
+            WHERE s.account_id = accounts.id
+        )
+        AND COALESCE(
+            NULLIF(BTRIM(extra->>'neonix_legacy_email'), ''),
+            NULLIF(BTRIM(credentials->>'email'), '')
+        ) IS NOT NULL
+    ) AS eligible,
+    COUNT(*) AS total
+FROM accounts
+WHERE platform = $1 AND deleted_at IS NULL`,
+		service.PlatformGrok, service.StatusError, service.StatusExpired, "exhausted", service.StatusActive)
+	if err != nil {
+		return service.RegisterReloginCandidateSummary{}, err
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return service.RegisterReloginCandidateSummary{}, err
+		}
+		return service.RegisterReloginCandidateSummary{}, errors.New("Grok re-login aggregate query returned no row")
+	}
+	var summary service.RegisterReloginCandidateSummary
+	if err := rows.Scan(&summary.Count, &summary.TotalProvider); err != nil {
+		return service.RegisterReloginCandidateSummary{}, err
+	}
+	return summary, rows.Err()
+}
+
+func (r *accountRepository) ListQoderInjectCandidates(ctx context.Context) ([]service.RegisterQoderInjectCandidate, int, error) {
+	accounts, err := r.ListRegisterAccountsByPlatform(ctx, service.PlatformQoder)
+	if err != nil {
+		return nil, 0, err
+	}
+	result := make([]service.RegisterQoderInjectCandidate, 0, len(accounts))
+	for i := range accounts {
+		if candidate, ok := qoderInjectCandidateFromAccount(accounts[i]); ok {
+			result = append(result, candidate)
+		}
+	}
+	return result, len(accounts), nil
+}
+
+func (r *accountRepository) QoderInjectCandidateSummary(ctx context.Context) (service.RegisterQoderInjectCandidateSummary, error) {
+	if r == nil || r.sql == nil {
+		return service.RegisterQoderInjectCandidateSummary{}, errors.New("account repository is not configured")
+	}
+	rows, err := r.sql.QueryContext(ctx, `
+SELECT
+    COUNT(*) FILTER (WHERE
+        EXISTS (
+            SELECT 1
+            FROM (VALUES
+                (credentials->>'token'),
+                (credentials->>'accessToken'),
+                (credentials->>'access_token'),
+                (credentials->>'apiKey'),
+                (credentials->>'api_key'),
+                (credentials->>'authToken'),
+                (credentials->>'auth_token')
+            ) AS pat(value)
+            WHERE BTRIM(pat.value) LIKE 'pt-%'
+                AND CHAR_LENGTH(BTRIM(pat.value)) <= 4096
+        )
+        AND NOT EXISTS (
+            SELECT 1
+            FROM jsonb_array_elements_text(
+                CASE WHEN jsonb_typeof(extra->'neonix_legacy_tags') = 'array'
+                    THEN extra->'neonix_legacy_tags' ELSE '[]'::jsonb END
+            ) AS tag(value)
+            WHERE LOWER(BTRIM(tag.value)) = 'pro-trial'
+        )
+        AND LOWER(COALESCE(extra#>>'{neonix_legacy_subscription,type}', '')) NOT LIKE '%trial%'
+        AND LOWER(COALESCE(extra#>>'{neonix_legacy_subscription,title}', '')) NOT LIKE '%trial%'
+        AND LOWER(COALESCE(
+            NULLIF(BTRIM(credentials->>'userType'), ''),
+            NULLIF(BTRIM(credentials->>'user_type'), ''),
+            ''
+        )) NOT LIKE '%professional_trial%'
+        AND LOWER(COALESCE(credentials->>'plan', '')) NOT LIKE '%trial%'
+        AND CHAR_LENGTH(COALESCE(
+                NULLIF(BTRIM(extra->>'neonix_legacy_email'), ''),
+                NULLIF(BTRIM(credentials->>'email'), '')
+            )) BETWEEN 1 AND 320
+    ) AS eligible,
+    COUNT(*) AS total
+FROM accounts
+WHERE platform = $1 AND deleted_at IS NULL`, service.PlatformQoder)
+	if err != nil {
+		return service.RegisterQoderInjectCandidateSummary{}, err
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return service.RegisterQoderInjectCandidateSummary{}, err
+		}
+		return service.RegisterQoderInjectCandidateSummary{}, errors.New("Qoder inject aggregate query returned no row")
+	}
+	var summary service.RegisterQoderInjectCandidateSummary
+	if err := rows.Scan(&summary.Count, &summary.TotalProvider); err != nil {
+		return service.RegisterQoderInjectCandidateSummary{}, err
+	}
+	return summary, rows.Err()
+}
+
+func qoderInjectCandidateFromAccount(account service.Account) (service.RegisterQoderInjectCandidate, bool) {
+	if account.Platform != service.PlatformQoder || qoderAccountAlreadyTrial(account) {
+		return service.RegisterQoderInjectCandidate{}, false
+	}
+	pat := registerAccountPAT(account.Credentials)
+	if pat == "" || len(pat) > 4096 {
+		return service.RegisterQoderInjectCandidate{}, false
+	}
+	email := registerAccountExtraString(account.Extra, "neonix_legacy_email")
+	if email == "" {
+		email = registerAccountCredentialString(account.Credentials, "email")
+	}
+	if email == "" || len(email) > 320 {
+		return service.RegisterQoderInjectCandidate{}, false
+	}
+	legacyID := registerAccountExtraString(account.Extra, "neonix_legacy_account_id")
+	if legacyID == "" {
+		legacyID = strconv.FormatInt(account.ID, 10)
+	}
+	createdAt := int64(0)
+	if !account.CreatedAt.IsZero() {
+		createdAt = account.CreatedAt.UnixMilli()
+	}
+	return service.RegisterQoderInjectCandidate{
+		ID: legacyID, Email: email, Provider: "qoder", Credentials: map[string]any{"token": pat},
+		IDP: registerAccountExtraString(account.Extra, "neonix_legacy_idp"), Nickname: account.Name,
+		Tags: registerAccountExtraStringSlice(account.Extra, "neonix_legacy_tags"), CreatedAt: createdAt,
+	}, true
+}
+
+func qoderAccountAlreadyTrial(account service.Account) bool {
+	for _, tag := range registerAccountExtraStringSlice(account.Extra, "neonix_legacy_tags") {
+		if strings.EqualFold(strings.TrimSpace(tag), "pro-trial") {
+			return true
+		}
+	}
+	if subscription, ok := account.Extra["neonix_legacy_subscription"].(map[string]any); ok {
+		for _, key := range []string{"type", "title"} {
+			if strings.Contains(strings.ToLower(registerAccountExtraString(subscription, key)), "trial") {
+				return true
+			}
+		}
+	}
+	userType := registerAccountCredentialString(account.Credentials, "userType", "user_type")
+	if strings.Contains(strings.ToLower(userType), "professional_trial") {
+		return true
+	}
+	return strings.Contains(strings.ToLower(registerAccountCredentialString(account.Credentials, "plan")), "trial")
+}
+
+func registerAccountCredentialString(values map[string]any, keys ...string) string {
+	for _, key := range keys {
+		if value, ok := values[key].(string); ok && strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+
+func registerAccountPAT(values map[string]any) string {
+	for _, key := range []string{"token", "accessToken", "access_token", "apiKey", "api_key", "authToken", "auth_token"} {
+		if value, ok := values[key].(string); ok {
+			value = strings.TrimSpace(value)
+			if strings.HasPrefix(value, "pt-") {
+				return value
+			}
+		}
+	}
+	return ""
+}
+
+func registerAccountExtraString(values map[string]any, key string) string {
+	value, _ := values[key].(string)
+	return strings.TrimSpace(value)
+}
+
+func registerAccountExtraStringSlice(values map[string]any, key string) []string {
+	raw := values[key]
+	switch items := raw.(type) {
+	case []string:
+		return append([]string(nil), items...)
+	case []any:
+		result := make([]string, 0, len(items))
+		for _, item := range items {
+			if value, ok := item.(string); ok {
+				result = append(result, value)
+			}
+		}
+		return result
+	default:
+		return nil
+	}
+}
+
+func isGrokReloginAccount(account service.Account, now time.Time) bool {
+	switch strings.ToLower(strings.TrimSpace(account.Status)) {
+	case service.StatusError, service.StatusExpired, "exhausted":
+		return true
+	}
+	return account.Status == service.StatusActive && account.AutoPauseOnExpired && account.ExpiresAt != nil && !account.ExpiresAt.After(now)
+}
+
+func (r *accountRepository) loadRegisterAutomationPasswords(ctx context.Context, accountIDs []int64) (map[int64]string, error) {
+	result := make(map[int64]string)
+	if len(accountIDs) == 0 {
+		return result, nil
+	}
+	if r == nil || r.sql == nil || r.credentialCodec == nil {
+		return nil, errors.New("register automation secret storage is not configured")
+	}
+	if r.credentialCodecErr != nil {
+		return nil, r.credentialCodecErr
+	}
+	rows, err := r.sql.QueryContext(ctx, `
+SELECT account_id, password_envelope
+FROM account_register_automation_secrets
+WHERE account_id = ANY($1)`, pq.Array(accountIDs))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var accountID int64
+		var envelope string
+		if err := rows.Scan(&accountID, &envelope); err != nil {
+			return nil, err
+		}
+		plaintext, err := r.credentialCodec.Open(envelope)
+		if err != nil || strings.TrimSpace(string(plaintext)) == "" || len(plaintext) > 4096 {
+			return nil, errors.New("register automation secret cannot be opened")
+		}
+		result[accountID] = string(plaintext)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (r *accountRepository) StoreRegisterAutomationPassword(ctx context.Context, accountID int64, password string) error {
+	if accountID <= 0 || strings.TrimSpace(password) == "" || len(password) > 4096 {
+		return errors.New("invalid register automation credential")
+	}
+	if r == nil || r.sql == nil || r.credentialCodec == nil {
+		return errors.New("register automation secret storage is not configured")
+	}
+	if r.credentialCodecErr != nil {
+		return r.credentialCodecErr
+	}
+	envelope, err := r.credentialCodec.Seal([]byte(password))
+	if err != nil {
+		return errors.New("register automation credential cannot be sealed")
+	}
+	_, err = r.sql.ExecContext(ctx, `
+INSERT INTO account_register_automation_secrets (account_id, password_envelope)
+VALUES ($1, $2)
+ON CONFLICT (account_id) DO UPDATE
+SET password_envelope = EXCLUDED.password_envelope, updated_at = NOW()`, accountID, envelope)
+	return err
+}
+
+func (r *accountRepository) RestoreRegisterReloginAccount(ctx context.Context, accountID int64) error {
+	if r == nil || r.sql == nil || accountID <= 0 {
+		return errors.New("account repository is not configured")
+	}
+	result, err := r.sql.ExecContext(ctx, `
+WITH updated AS (
+    UPDATE accounts
+    SET status = $1,
+        schedulable = TRUE,
+        error_message = '',
+        expires_at = NULL,
+        rate_limited_at = NULL,
+        rate_limit_reset_at = NULL,
+        overload_until = NULL,
+        temp_unschedulable_until = NULL,
+        temp_unschedulable_reason = NULL,
+        extra = COALESCE(extra, '{}'::jsonb) - 'model_rate_limits',
+        updated_at = NOW()
+    WHERE id = $2 AND platform = $3 AND deleted_at IS NULL
+    RETURNING id
+)
+INSERT INTO scheduler_outbox (event_type, account_id, group_id, payload)
+SELECT $4, id, NULL, NULL FROM updated`, service.StatusActive, accountID, service.PlatformGrok, service.SchedulerOutboxEventAccountChanged)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected != 1 {
+		return service.ErrAccountNotFound
+	}
+	service.ClearGrokAccountModelQuotaBlocks(accountID)
+	if r.client != nil {
+		if account, err := r.GetByID(ctx, accountID); err == nil {
+			service.ClearGrokAccountTeamModelRateLimits(account)
+		}
+	}
+	r.syncSchedulerAccountSnapshotDetached(ctx, accountID)
+	return nil
+}
+
 func (r *accountRepository) UpdateLastUsed(ctx context.Context, id int64) error {
 	now := time.Now()
 	_, err := r.client.Account.Update().
@@ -1645,15 +1956,6 @@ func (r *accountRepository) UpdateGrokOAuthCredentialsIfUnchanged(
 	}
 	if rowsAffected == 0 {
 		return false, nil
-	}
-	if r.credentialCodec != nil {
-		envelope, err := sealAccountCredentials(r.credentialCodec, credentials)
-		if err != nil {
-			return false, err
-		}
-		if err := persistAccountCredentialEnvelope(ctx, r.sql, id, envelope); err != nil {
-			return false, err
-		}
 	}
 	r.syncSchedulerAccountSnapshotDetached(ctx, id)
 	return true, nil
@@ -3159,11 +3461,6 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 			return 0, service.ErrUpstreamBillingProbeAccountInvalid
 		}
 	}
-	if r.credentialCodec != nil && len(updates.Credentials) > 0 && rows > 0 {
-		if err := syncAccountCredentialEnvelopes(ctx, exec, r.credentialCodec, ids); err != nil {
-			return 0, err
-		}
-	}
 	if rows > 0 {
 		payload := map[string]any{"account_ids": ids}
 		if err := enqueueSchedulerOutbox(ctx, exec, service.SchedulerOutboxEventAccountBulkChanged, nil, nil, payload); err != nil {
@@ -3289,30 +3586,11 @@ func (r *accountRepository) accountsToService(ctx context.Context, accounts []*d
 	if err != nil {
 		return nil, err
 	}
-	credentialEnvelopes := map[int64]string{}
-	if r.credentialCodec != nil {
-		exec := r.sql
-		if exec == nil {
-			exec = r.client
-		}
-		credentialEnvelopes, err = loadAccountCredentialEnvelopes(ctx, exec, accountIDs)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	outAccounts := make([]service.Account, 0, len(accounts))
 	for _, acc := range accounts {
 		out := accountEntityToService(acc)
 		if out == nil {
 			continue
-		}
-		if envelope, ok := credentialEnvelopes[acc.ID]; ok {
-			decrypted, err := openAccountCredentialEnvelope(r.credentialCodec, envelope)
-			if err != nil {
-				return nil, fmt.Errorf("account credential envelope %d is invalid", acc.ID)
-			}
-			out.Credentials = decrypted
 		}
 		if acc.ProxyID != nil {
 			if proxy, ok := proxyMap[*acc.ProxyID]; ok {

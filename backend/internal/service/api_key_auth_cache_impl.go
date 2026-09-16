@@ -10,11 +10,11 @@ import (
 	"math/rand/v2"
 	"time"
 
-	"github.com/luminovaa/neonix-gateway-go/internal/config"
 	"github.com/dgraph-io/ristretto"
+	"github.com/luminovaa/neonix-gateway-go/internal/config"
 )
 
-const apiKeyAuthSnapshotVersion = 24 // v24: group model_allowlist field (renamed from models_list_config, enforcing semantics)
+const apiKeyAuthSnapshotVersion = 25 // v25: remove retired resale admission fields
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -432,9 +432,6 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			PeakStart:                       apiKey.Group.PeakStart,
 			PeakEnd:                         apiKey.Group.PeakEnd,
 			PeakRateMultiplier:              apiKey.Group.PeakRateMultiplier,
-			ProfitControlEnabled:            apiKey.Group.ProfitControlEnabled,
-			ProfitMinMargin:                 apiKey.Group.ProfitMinMargin,
-			ProfitSafetyBuffer:              apiKey.Group.ProfitSafetyBuffer,
 		}
 	}
 	return snapshot
@@ -534,9 +531,6 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			PeakStart:                       snapshot.Group.PeakStart,
 			PeakEnd:                         snapshot.Group.PeakEnd,
 			PeakRateMultiplier:              snapshot.Group.PeakRateMultiplier,
-			ProfitControlEnabled:            snapshot.Group.ProfitControlEnabled,
-			ProfitMinMargin:                 snapshot.Group.ProfitMinMargin,
-			ProfitSafetyBuffer:              snapshot.Group.ProfitSafetyBuffer,
 		}
 	}
 	s.compileAPIKeyIPRules(apiKey)

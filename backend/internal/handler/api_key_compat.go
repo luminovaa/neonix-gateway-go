@@ -51,13 +51,6 @@ type neonixAPIKeyModelUsage struct {
 	Credits      float64 `json:"credits"`
 }
 
-type neonixAPIKeyAccessStats struct {
-	TotalRequests    int64  `json:"totalRequests"`
-	UniqueIPs        int64  `json:"uniqueIPs"`
-	UniqueUserAgents int64  `json:"uniqueUserAgents"`
-	LastAccessed     *int64 `json:"lastAccessed"`
-}
-
 func apiKeyCompatPrefix(key string) string {
 	if len(key) <= 12 {
 		return key
@@ -349,44 +342,6 @@ func (h *APIKeyHandler) GetUsageCompat(c *gin.Context) {
 		OutputTokens:    stats.TotalOutputTokens,
 		TotalCredits:    stats.TotalActualCost,
 		Models:          modelStats,
-	})
-}
-
-// GetAccessStatsCompat implements GET /api/api-keys/:id/access-stats.
-func (h *APIKeyHandler) GetAccessStatsCompat(c *gin.Context) {
-	subject, ok := h.compatSubject(c)
-	if !ok {
-		return
-	}
-	rawID := strings.TrimSpace(c.Param("id"))
-	if rawID == "" {
-		response.ErrorWithDetails(c, http.StatusBadRequest, "Invalid API key ID", "API_KEY_ID_INVALID", nil)
-		return
-	}
-	key, err := h.apiKeyService.GetByCompatID(c.Request.Context(), subject.UserID, rawID)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	if h.usageService == nil {
-		response.ErrorWithDetails(c, http.StatusServiceUnavailable, "API key access statistics are unavailable", "API_KEY_ACCESS_STATS_UNAVAILABLE", nil)
-		return
-	}
-	stats, err := h.usageService.GetAPIKeyAccessStats(c.Request.Context(), key.ID)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	var lastAccessed *int64
-	if stats.LastAccessedAt != nil {
-		value := stats.LastAccessedAt.UnixMilli()
-		lastAccessed = &value
-	}
-	response.Success(c, neonixAPIKeyAccessStats{
-		TotalRequests:    stats.TotalRequests,
-		UniqueIPs:        stats.UniqueIPs,
-		UniqueUserAgents: stats.UniqueUserAgents,
-		LastAccessed:     lastAccessed,
 	})
 }
 

@@ -225,7 +225,7 @@ func TestAdminServiceSimpleModeNormalizesAllUnsupportedCreateFieldsDirectly(t *t
 		AudioRealtimePricePerMin: &one, ClaudeCodeOnly: true, FallbackGroupID: &fallbackID,
 		ModelRouting: map[string][]int64{"claude": {1}}, ModelRoutingEnabled: true,
 		AllowMessagesDispatch: true, AllowLive: true, ForceOpenAIFast: true, RequireOAuthOnly: true,
-		RPMLimit: 99, MaxReasoningEffort: "high", ProfitControlEnabled: true, ProfitMinMargin: &one,
+		RPMLimit: 99, MaxReasoningEffort: "high",
 		CopyAccountsFromGroupIDs: []int64{2},
 	}
 	repo := &groupRepoStubForAdmin{}
@@ -263,8 +263,7 @@ func TestAdminServiceSimpleModeNormalizesAllUnsupportedUpdateFieldsDirectly(t *t
 		AudioRealtimePricePerMin: &one, ClaudeCodeOnly: &truth, FallbackGroupID: &fallbackID,
 		ModelRouting: map[string][]int64{"claude": {1}}, ModelRoutingEnabled: &truth,
 		AllowMessagesDispatch: &truth, AllowLive: &truth, ForceOpenAIFast: &truth, RequireOAuthOnly: &truth,
-		RPMLimit: new(int), MaxReasoningEffort: ptrString("high"), ProfitControlEnabled: &truth,
-		ProfitMinMargin: &one, CopyAccountsFromGroupIDs: []int64{2},
+		RPMLimit: new(int), MaxReasoningEffort: ptrString("high"), CopyAccountsFromGroupIDs: []int64{2},
 	}
 	existing := &Group{ID: 1, Name: "old", Description: "old description", Platform: PlatformAnthropic, Status: StatusActive, RateMultiplier: 3, RPMLimit: 8, FallbackGroupID: &fallbackID}
 	repo := &groupRepoStubForAdmin{getByID: existing}

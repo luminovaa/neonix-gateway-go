@@ -662,15 +662,16 @@ func (s *UserRepoSuite) TestGetFirstAdmin() {
 	s.Require().Equal(admin1.ID, got.ID, "GetFirstAdmin mismatch")
 }
 
-func (s *UserRepoSuite) TestGetFirstAdmin_NoAdmin() {
-	s.mustCreateUser(&service.User{
+func (s *UserRepoSuite) TestGetFirstAdminReturnsActiveLegacyUser() {
+	operator := s.mustCreateUser(&service.User{
 		Email:  "user@example.com",
 		Role:   service.RoleUser,
 		Status: service.StatusActive,
 	})
 
-	_, err := s.repo.GetFirstAdmin(s.ctx)
-	s.Require().Error(err, "expected error when no admin exists")
+	got, err := s.repo.GetFirstAdmin(s.ctx)
+	s.Require().NoError(err)
+	s.Require().Equal(operator.ID, got.ID)
 }
 
 func (s *UserRepoSuite) TestGetFirstAdmin_DisabledAdminIgnored() {

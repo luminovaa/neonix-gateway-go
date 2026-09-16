@@ -56,9 +56,10 @@ func (e *MailboxRuntimeError) Error() string {
 func (e *MailboxRuntimeError) Unwrap() error { return e.Cause }
 
 type PythonMailboxRuntime struct {
-	baseURL string
-	apiKey  string
-	client  *http.Client
+	baseURL        string
+	apiKey         string
+	client         *http.Client
+	runtimeManager *PythonRuntimeManager
 }
 
 func NewPythonMailboxRuntime() *PythonMailboxRuntime {
@@ -67,15 +68,14 @@ func NewPythonMailboxRuntime() *PythonMailboxRuntime {
 		port = "7788"
 	}
 	apiKey := strings.TrimSpace(os.Getenv("PYAUTO_INTERNAL_API_KEY"))
-	if apiKey == "" {
-		apiKey = strings.TrimSpace(os.Getenv("API_SECRET"))
-	}
-	return NewPythonMailboxRuntimeWithConfig(
+	runtime := NewPythonMailboxRuntimeWithConfig(
 		strings.TrimRight(strings.TrimSpace(os.Getenv("PYAUTO_BASE_URL")), "/"),
 		apiKey,
 		&http.Client{Timeout: mailboxMaxTimeout + 5*time.Second},
 		port,
 	)
+	runtime.runtimeManager = NewPythonRuntimeManager()
+	return runtime
 }
 
 func NewPythonMailboxRuntimeWithConfig(baseURL, apiKey string, client *http.Client, port string) *PythonMailboxRuntime {
@@ -91,6 +91,13 @@ func NewPythonMailboxRuntimeWithConfig(baseURL, apiKey string, client *http.Clie
 	return &PythonMailboxRuntime{baseURL: strings.TrimRight(strings.TrimSpace(baseURL), "/"), apiKey: strings.TrimSpace(apiKey), client: client}
 }
 
+func (r *PythonMailboxRuntime) WithRuntimeManager(manager *PythonRuntimeManager) *PythonMailboxRuntime {
+	if r != nil {
+		r.runtimeManager = manager
+	}
+	return r
+}
+
 func (r *PythonMailboxRuntime) Poll(ctx context.Context, input MailboxPollInput) (*MailboxPollResult, error) {
 	if r == nil || r.client == nil || r.baseURL == "" || r.apiKey == "" {
 		return nil, &MailboxRuntimeError{Code: "MAILBOX_RUNTIME_UNAVAILABLE"}
@@ -101,6 +108,13 @@ func (r *PythonMailboxRuntime) Poll(ctx context.Context, input MailboxPollInput)
 	timeout := input.Timeout
 	if timeout < mailboxMinTimeout || timeout > mailboxMaxTimeout {
 		return nil, &MailboxRuntimeError{Code: "MAILBOX_TIMEOUT_INVALID"}
+	}
+	leaseID := newPythonRuntimeLeaseID("mailbox")
+	if r.runtimeManager != nil && r.runtimeManager.Configured() {
+		if _, err := r.runtimeManager.Acquire(ctx, leaseID, false); err != nil {
+			return nil, &MailboxRuntimeError{Code: "MAILBOX_RUNTIME_UNAVAILABLE", HTTPStatus: PythonRuntimeManagerHTTPStatus(err), Cause: err}
+		}
+		defer releasePythonRuntimeLease(r.runtimeManager, leaseID)
 	}
 	payload := map[string]any{
 		"email": input.Email, "clientId": input.ClientID, "refreshToken": input.RefreshToken,
@@ -132,8 +146,8 @@ func (r *PythonMailboxRuntime) Poll(ctx context.Context, input MailboxPollInput)
 		return nil, &MailboxRuntimeError{Code: "MAILBOX_RUNTIME_UNAVAILABLE", Cause: err}
 	}
 	defer response.Body.Close()
-	responseBody, err := io.ReadAll(io.LimitReader(response.Body, mailboxRuntimeBodyLimit))
-	if err != nil {
+	responseBody, err := io.ReadAll(io.LimitReader(response.Body, mailboxRuntimeBodyLimit+1))
+	if err != nil || len(responseBody) > mailboxRuntimeBodyLimit {
 		return nil, &MailboxRuntimeError{Code: "MAILBOX_POLL_FAILED", Cause: err}
 	}
 	if response.StatusCode == http.StatusUnauthorized || response.StatusCode == http.StatusBadRequest {

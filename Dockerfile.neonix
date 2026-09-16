@@ -1,0 +1,37 @@
+# syntax=docker/dockerfile:1.7
+ARG GOLANG_IMAGE=golang:1.27.0-alpine
+ARG ALPINE_IMAGE=alpine:3.21
+
+FROM ${GOLANG_IMAGE} AS builder
+ARG TARGETOS
+ARG TARGETARCH
+ARG VERSION=
+ARG COMMIT=docker
+ARG DATE
+WORKDIR /src/backend
+RUN apk add --no-cache git ca-certificates tzdata
+COPY backend/go.mod backend/go.sum ./
+RUN go mod download
+COPY backend/ ./
+RUN VERSION_VALUE="${VERSION}" && \
+    if [ -z "${VERSION_VALUE}" ]; then VERSION_VALUE="$(./scripts/resolve-version.sh)"; fi && \
+    DATE_VALUE="${DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}" && \
+    TARGET_ARCH_VALUE="${TARGETARCH:-$(go env GOARCH)}" && \
+    CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGET_ARCH_VALUE} go build \
+      -trimpath \
+      -ldflags="-s -w -X main.Version=${VERSION_VALUE} -X main.Commit=${COMMIT} -X main.Date=${DATE_VALUE} -X main.BuildType=release" \
+      -o /out/neonix-go ./cmd/server
+
+FROM ${ALPINE_IMAGE}
+RUN apk add --no-cache ca-certificates tzdata && \
+    addgroup -g 1000 neonix && \
+    adduser -u 1000 -G neonix -s /sbin/nologin -D neonix
+WORKDIR /app
+COPY --from=builder --chown=neonix:neonix /out/neonix-go /app/neonix-go
+COPY --from=builder --chown=neonix:neonix /src/backend/resources /app/resources
+RUN mkdir -p /app/data && chown neonix:neonix /app/data
+USER neonix
+EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD wget -q -T 3 -O /dev/null http://127.0.0.1:${SERVER_PORT:-8080}/ready || exit 1
+CMD ["/app/neonix-go"]

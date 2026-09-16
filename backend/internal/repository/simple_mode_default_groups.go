@@ -26,6 +26,9 @@ func ensureSimpleModeDefaultGroups(ctx context.Context, client *dbent.Client) er
 		service.PlatformGemini:      1,
 		service.PlatformAntigravity: 2,
 		service.PlatformGrok:        1,
+		// WorkBuddy must have its own default group even though it shares the
+		// cb/* namespace with CodeBuddy. Group platform is the realm boundary.
+		service.PlatformWorkBuddy: 1,
 	}
 
 	for platform, minCount := range requiredByPlatform {

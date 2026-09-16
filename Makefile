@@ -1,4 +1,4 @@
-.PHONY: build build-backend build-frontend test test-backend test-frontend test-frontend-critical
+.PHONY: build build-backend build-frontend build-neonix-image test test-backend test-frontend test-frontend-critical
 
 FRONTEND_CRITICAL_VITEST := \
 	src/i18n/__tests__/localeKeyCompleteness.spec.ts \
@@ -26,6 +26,11 @@ build-backend:
 # 编译前端（需要已安装依赖）
 build-frontend:
 	@pnpm --dir frontend run build
+
+# Production backend image for the separate Neonix Next.js deployment. This
+# intentionally excludes the inherited Sub2API frontend from the image.
+build-neonix-image:
+	@docker build -f Dockerfile.neonix -t neonix-go-backend:current .
 
 # 运行测试（后端 + 前端）
 test: test-backend test-frontend

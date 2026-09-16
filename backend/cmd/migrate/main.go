@@ -69,7 +69,11 @@ func main() {
 			deprecatedProviders[provider] = true
 		}
 	}
-	normalized, report := legacy.Convert(accounts, codec, legacy.Options{DeprecatedProviders: deprecatedProviders})
+	legacyBYOKKey, err := legacy.DecodeLegacyBYOKKey(os.Getenv("BYOK_ENCRYPTION_KEY"))
+	if err != nil {
+		fatal("legacy GitHub identity key: %v", err)
+	}
+	normalized, report := legacy.Convert(accounts, codec, legacy.Options{DeprecatedProviders: deprecatedProviders, LegacyBYOKKey: legacyBYOKKey})
 	normalizedAPIKeys, apiKeyReport := legacy.NormalizeAPIKeys(apiKeys, time.Now)
 	normalizedSettings, settingsReport := legacy.NormalizeSettings(settings)
 	if report.Blocked > 0 {
