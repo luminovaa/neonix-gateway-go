@@ -15,6 +15,10 @@ export type Platform =
   | 'zhipu'
   | 'deepseek'
   | 'minimax'
+  | 'kiro'
+  | 'qoder'
+  | 'codebuddy'
+  | 'codebuddy-china'
   | 'composite'
 
 // ── Badge (bg + text + border, for inline badges with border) ───────
@@ -28,6 +32,10 @@ const BADGE: Record<Platform, string> = {
   zhipu: 'bg-indigo-500/10 text-indigo-600 border-indigo-500/30 dark:text-indigo-400',
   deepseek: 'bg-teal-500/10 text-teal-600 border-teal-500/30 dark:text-teal-400',
   minimax: 'bg-rose-500/10 text-rose-600 border-rose-500/30 dark:text-rose-400',
+  kiro: 'bg-amber-500/10 text-amber-700 border-amber-500/30 dark:text-amber-300',
+  qoder: 'bg-violet-500/10 text-violet-700 border-violet-500/30 dark:text-violet-300',
+  codebuddy: 'bg-sky-500/10 text-sky-700 border-sky-500/30 dark:text-sky-300',
+  'codebuddy-china': 'bg-red-500/10 text-red-700 border-red-500/30 dark:text-red-300',
   composite: 'bg-cyan-500/10 text-cyan-700 border-cyan-500/30 dark:text-cyan-300',
 }
 const BADGE_DEFAULT = 'bg-slate-500/10 text-slate-600 border-slate-500/30 dark:text-slate-400'
@@ -43,6 +51,10 @@ const BADGE_LIGHT: Record<Platform, string> = {
   zhipu: 'bg-indigo-500/10 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300',
   deepseek: 'bg-teal-500/10 text-teal-600 dark:bg-teal-500/10 dark:text-teal-300',
   minimax: 'bg-rose-500/10 text-rose-600 dark:bg-rose-500/10 dark:text-rose-300',
+  kiro: 'bg-amber-500/10 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300',
+  qoder: 'bg-violet-500/10 text-violet-700 dark:bg-violet-500/10 dark:text-violet-300',
+  codebuddy: 'bg-sky-500/10 text-sky-700 dark:bg-sky-500/10 dark:text-sky-300',
+  'codebuddy-china': 'bg-red-500/10 text-red-700 dark:bg-red-500/10 dark:text-red-300',
   composite: 'bg-cyan-500/10 text-cyan-700 dark:bg-cyan-500/10 dark:text-cyan-300',
 }
 
@@ -57,6 +69,10 @@ const BORDER: Record<Platform, string> = {
   zhipu: 'border-indigo-500/20 dark:border-indigo-500/20',
   deepseek: 'border-teal-500/20 dark:border-teal-500/20',
   minimax: 'border-rose-500/20 dark:border-rose-500/20',
+  kiro: 'border-amber-500/20 dark:border-amber-500/20',
+  qoder: 'border-violet-500/20 dark:border-violet-500/20',
+  codebuddy: 'border-sky-500/20 dark:border-sky-500/20',
+  'codebuddy-china': 'border-red-500/20 dark:border-red-500/20',
   composite: 'border-cyan-500/20 dark:border-cyan-500/20',
 }
 const BORDER_DEFAULT = 'border-gray-200 dark:border-dark-700'
@@ -72,6 +88,10 @@ const BORDER_STRONG: Record<Platform, string> = {
   zhipu: 'border-indigo-500/35 dark:border-indigo-500/30',
   deepseek: 'border-teal-500/35 dark:border-teal-500/30',
   minimax: 'border-rose-500/35 dark:border-rose-500/30',
+  kiro: 'border-amber-500/35 dark:border-amber-500/30',
+  qoder: 'border-violet-500/35 dark:border-violet-500/30',
+  codebuddy: 'border-sky-500/35 dark:border-sky-500/30',
+  'codebuddy-china': 'border-red-500/35 dark:border-red-500/30',
   composite: 'border-cyan-500/35 dark:border-cyan-500/30',
 }
 const BORDER_STRONG_DEFAULT = 'border-gray-300 dark:border-dark-600'
@@ -88,6 +108,10 @@ const ACCENT: Record<Platform, string> = {
   zhipu: '#6366f1', // indigo-500
   deepseek: '#14b8a6', // teal-500
   minimax: '#f43f5e', // rose-500
+  kiro: '#f59e0b', // amber-500
+  qoder: '#8b5cf6', // violet-500
+  codebuddy: '#0ea5e9', // sky-500
+  'codebuddy-china': '#ef4444', // red-500
   composite: '#06b6d4', // cyan-500
 }
 const ACCENT_DEFAULT = '#14b8a6' // primary-500 (teal)
@@ -103,6 +127,10 @@ const ACCENT_BAR: Record<Platform, string> = {
   zhipu: 'bg-gradient-to-r from-indigo-400 to-indigo-500',
   deepseek: 'bg-gradient-to-r from-teal-400 to-teal-500',
   minimax: 'bg-gradient-to-r from-rose-400 to-rose-500',
+  kiro: 'bg-gradient-to-r from-amber-400 to-amber-500',
+  qoder: 'bg-gradient-to-r from-violet-400 to-violet-500',
+  codebuddy: 'bg-gradient-to-r from-sky-400 to-sky-500',
+  'codebuddy-china': 'bg-gradient-to-r from-red-400 to-red-500',
   composite: 'bg-gradient-to-r from-slate-500 to-cyan-500',
 }
 const ACCENT_BAR_DEFAULT = 'bg-gradient-to-r from-primary-400 to-primary-500'
@@ -118,6 +146,10 @@ const TEXT: Record<Platform, string> = {
   zhipu: 'text-indigo-600 dark:text-indigo-400',
   deepseek: 'text-teal-600 dark:text-teal-400',
   minimax: 'text-rose-600 dark:text-rose-400',
+  kiro: 'text-amber-700 dark:text-amber-300',
+  qoder: 'text-violet-700 dark:text-violet-300',
+  codebuddy: 'text-sky-700 dark:text-sky-300',
+  'codebuddy-china': 'text-red-700 dark:text-red-300',
   composite: 'text-cyan-700 dark:text-cyan-300',
 }
 const TEXT_DEFAULT = 'text-primary-600 dark:text-primary-400'
@@ -133,6 +165,10 @@ const ICON: Record<Platform, string> = {
   zhipu: 'text-indigo-500 dark:text-indigo-400',
   deepseek: 'text-teal-500 dark:text-teal-400',
   minimax: 'text-rose-500 dark:text-rose-400',
+  kiro: 'text-amber-500 dark:text-amber-300',
+  qoder: 'text-violet-500 dark:text-violet-300',
+  codebuddy: 'text-sky-500 dark:text-sky-300',
+  'codebuddy-china': 'text-red-500 dark:text-red-300',
   composite: 'text-cyan-600 dark:text-cyan-300',
 }
 const ICON_DEFAULT = 'text-primary-500 dark:text-primary-400'
@@ -148,6 +184,10 @@ const BUTTON: Record<Platform, string> = {
   zhipu: 'bg-indigo-500 text-white hover:bg-indigo-600 active:bg-indigo-700 dark:bg-indigo-500/80 dark:hover:bg-indigo-500',
   deepseek: 'bg-teal-500 text-white hover:bg-teal-600 active:bg-teal-700 dark:bg-teal-500/80 dark:hover:bg-teal-500',
   minimax: 'bg-rose-500 text-white hover:bg-rose-600 active:bg-rose-700 dark:bg-rose-500/80 dark:hover:bg-rose-500',
+  kiro: 'bg-amber-500 text-white hover:bg-amber-600 active:bg-amber-700 dark:bg-amber-500/80 dark:hover:bg-amber-500',
+  qoder: 'bg-violet-500 text-white hover:bg-violet-600 active:bg-violet-700 dark:bg-violet-500/80 dark:hover:bg-violet-500',
+  codebuddy: 'bg-sky-500 text-white hover:bg-sky-600 active:bg-sky-700 dark:bg-sky-500/80 dark:hover:bg-sky-500',
+  'codebuddy-china': 'bg-red-500 text-white hover:bg-red-600 active:bg-red-700 dark:bg-red-500/80 dark:hover:bg-red-500',
   composite: 'bg-cyan-700 text-white hover:bg-cyan-800 active:bg-cyan-900 dark:bg-cyan-600 dark:hover:bg-cyan-500',
 }
 const BUTTON_DEFAULT = 'bg-primary-500 text-white hover:bg-primary-600 dark:bg-primary-600 dark:hover:bg-primary-500'
@@ -163,6 +203,10 @@ const DISCOUNT: Record<Platform, string> = {
   zhipu: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300',
   deepseek: 'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300',
   minimax: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
+  kiro: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
+  qoder: 'bg-violet-100 text-violet-800 dark:bg-violet-900/40 dark:text-violet-300',
+  codebuddy: 'bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300',
+  'codebuddy-china': 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300',
   composite: 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900/40 dark:text-cyan-300',
 }
 const DISCOUNT_DEFAULT = 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
@@ -178,6 +222,10 @@ const GRADIENT: Record<Platform, string> = {
   zhipu: 'from-indigo-500 to-indigo-600',
   deepseek: 'from-teal-500 to-teal-600',
   minimax: 'from-rose-500 to-rose-600',
+  kiro: 'from-amber-500 to-amber-600',
+  qoder: 'from-violet-500 to-violet-600',
+  codebuddy: 'from-sky-500 to-sky-600',
+  'codebuddy-china': 'from-red-500 to-red-600',
   composite: 'from-slate-600 to-cyan-600',
 }
 const GRADIENT_DEFAULT = 'from-primary-500 to-primary-600'
@@ -193,6 +241,10 @@ const GRADIENT_TEXT: Record<Platform, string> = {
   zhipu: 'text-indigo-100',
   deepseek: 'text-teal-100',
   minimax: 'text-rose-100',
+  kiro: 'text-amber-100',
+  qoder: 'text-violet-100',
+  codebuddy: 'text-sky-100',
+  'codebuddy-china': 'text-red-100',
   composite: 'text-cyan-100',
 }
 const GRADIENT_TEXT_DEFAULT = 'text-primary-100'
@@ -207,6 +259,10 @@ const GRADIENT_SUBTEXT: Record<Platform, string> = {
   zhipu: 'text-indigo-200',
   deepseek: 'text-teal-200',
   minimax: 'text-rose-200',
+  kiro: 'text-amber-200',
+  qoder: 'text-violet-200',
+  codebuddy: 'text-sky-200',
+  'codebuddy-china': 'text-red-200',
   composite: 'text-cyan-200',
 }
 const GRADIENT_SUBTEXT_DEFAULT = 'text-primary-200'
@@ -224,6 +280,10 @@ function isPlatform(p: string): p is Platform {
     p === 'zhipu' ||
     p === 'deepseek' ||
     p === 'minimax' ||
+    p === 'kiro' ||
+    p === 'qoder' ||
+    p === 'codebuddy' ||
+    p === 'codebuddy-china' ||
     p === 'composite'
   )
 }
@@ -291,6 +351,10 @@ export function platformLabel(p: string): string {
     case 'zhipu': return 'Zhipu GLM'
     case 'deepseek': return 'DeepSeek'
     case 'minimax': return 'MiniMax'
+    case 'kiro': return 'Kiro'
+    case 'qoder': return 'Qoder'
+    case 'codebuddy': return 'CodeBuddy'
+    case 'codebuddy-china': return 'CodeBuddy China'
     case 'composite': return 'Composite'
     default: return p || 'API'
   }

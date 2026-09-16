@@ -2,6 +2,7 @@ package routes
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -11,6 +12,21 @@ func RegisterCommonRoutes(r *gin.Engine) {
 	// 健康检查
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	})
+	// The Neonix web client historically probes /api/health. Keep the alias
+	// beside /health while the canonical gateway continues to use the shorter
+	// liveness path.
+	r.GET("/api/health", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"ok": true, "status": "ok", "ts": time.Now().UnixMilli()})
+	})
+
+	// Readiness is intentionally separate from liveness so deployers can use
+	// the same probe contract while the database/Redis wiring is migrated in
+	// later vertical slices. The server only registers routes after its
+	// dependencies have been constructed, so a reachable handler means the
+	// process completed startup.
+	r.GET("/ready", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"status": "ready"})
 	})
 
 	// Claude Code 遥测日志（忽略，直接返回200）

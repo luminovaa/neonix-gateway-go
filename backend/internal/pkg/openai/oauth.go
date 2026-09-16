@@ -21,6 +21,11 @@ const (
 	// OAuth endpoints
 	AuthorizeURL = "https://auth.openai.com/oauth/authorize"
 	TokenURL     = "https://auth.openai.com/oauth/token"
+	// Device authorization endpoints used by the official Codex device login.
+	DeviceUserCodeURL = "https://auth.openai.com/api/accounts/deviceauth/usercode"
+	DeviceTokenURL    = "https://auth.openai.com/api/accounts/deviceauth/token"
+	DeviceVerifyURL   = "https://auth.openai.com/codex/device"
+	DeviceRedirectURI = "https://auth.openai.com/deviceauth/callback"
 
 	// Default redirect URI (can be customized)
 	DefaultRedirectURI = "http://localhost:1455/auth/callback"

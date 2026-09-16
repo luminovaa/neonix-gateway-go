@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/luminovaa/neonix-gateway-go/internal/config"
 	"github.com/stretchr/testify/require"
 )
 
@@ -133,6 +133,157 @@ func TestBuildGeminiModelsURL(t *testing.T) {
 	require.Equal(t, "https://generativelanguage.googleapis.com/v1beta/models", buildGeminiModelsURL("https://generativelanguage.googleapis.com"))
 	require.Equal(t, "https://generativelanguage.googleapis.com/v1beta/models", buildGeminiModelsURL("https://generativelanguage.googleapis.com/v1beta"))
 	require.Equal(t, "https://generativelanguage.googleapis.com/v1beta/models", buildGeminiModelsURL("https://generativelanguage.googleapis.com/v1beta/models"))
+}
+
+func TestBuildQoderUpstreamModelsPreservesLiveMetadataAndDeduplicates(t *testing.T) {
+	zero := 0.0
+	five := 5
+	models, body, err := buildQoderUpstreamModels([]qoderAvailableModel{
+		{Value: "lite", DisplayName: "Live Lite", Description: "Live description", PriceFactor: &zero, Source: "environment", IsDefault: true, SortOrder: &five},
+		{Value: "LITE", DisplayName: "duplicate"},
+		{Value: "future_model", DisplayName: "Future Model"},
+	}, "qoder_live")
+	require.NoError(t, err)
+	require.Equal(t, []string{"qr/Lite", "qr/future_model"}, models)
+
+	var catalog struct {
+		Source string           `json:"source"`
+		Data   []map[string]any `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(body, &catalog))
+	require.Equal(t, "qoder_live", catalog.Source)
+	require.Len(t, catalog.Data, 2)
+	require.Equal(t, "Live Lite", catalog.Data[0]["display_name"])
+	require.Equal(t, "environment", catalog.Data[0]["source"])
+	require.Equal(t, float64(0), catalog.Data[0]["price_factor"])
+	require.Equal(t, float64(5), catalog.Data[0]["sort_order"])
+	require.Equal(t, "qr/future_model", catalog.Data[1]["id"])
+}
+
+func TestBuildQoderUpstreamModelsFallsBackForMissingPriceFactorAndHasNoProGate(t *testing.T) {
+	models, body, err := buildQoderUpstreamModels([]qoderAvailableModel{{Value: "ultimate"}}, "qoder_live")
+	require.NoError(t, err)
+	require.Equal(t, []string{"qr/Ultimate"}, models)
+	require.Contains(t, string(body), `"price_factor":1.6`)
+	require.NotContains(t, string(body), "requires_pro")
+	require.NotContains(t, string(body), "requiresPro")
+}
+
+func TestBuildCodeBuddyUpstreamModelsPreservesLiveMetadataAndHasNoProGate(t *testing.T) {
+	models, body, err := buildCodeBuddyUpstreamModels([]codeBuddyAvailableModel{
+		{ID: "gemini-3.1-pro", DisplayName: "Live Gemini", Description: "Live description", Tags: []string{"chat"}, ContextWindow: 900000, MaxTokens: 24000},
+		{ID: "GEMINI-3.1-PRO", DisplayName: "duplicate"},
+		{ID: "future-model", DisplayName: "Future Model", Tags: []string{"chat"}},
+	}, "codebuddy_live")
+	require.NoError(t, err)
+	require.Equal(t, []string{"cb/gemini-3.1-pro", "cb/future-model"}, models)
+	require.Contains(t, string(body), `"display_name":"Live Gemini"`)
+	require.Contains(t, string(body), `"actual_model_id":"gemini-3.1-pro"`)
+	require.Contains(t, string(body), `"context_window":900000`)
+	require.Contains(t, string(body), `"max_output_tokens":24000`)
+	require.Contains(t, string(body), `"source":"codebuddy_live"`)
+	require.NotContains(t, string(body), "requires_pro")
+	require.NotContains(t, string(body), "requiresPro")
+}
+
+func TestCodeBuddyChinaCuratedCatalogHasWireIDsAndNoProGate(t *testing.T) {
+	models, body, err := fallbackCodeBuddyChinaUpstreamModels()
+	require.NoError(t, err)
+	require.Contains(t, models, "cbc/deepseek-v3")
+	require.Contains(t, models, "cbc/glm-5v-turbo")
+	require.Contains(t, string(body), `"actual_model_id":"deepseek-v3"`)
+	require.Contains(t, string(body), `"source":"codebuddy_china_curated"`)
+	require.NotContains(t, string(body), "requires_pro")
+	require.NotContains(t, string(body), "requiresPro")
+}
+
+func TestFetchCodeBuddyUpstreamModelsUsesLiveCatalogAndFallsBackSafely(t *testing.T) {
+	account := codeBuddyCLIAccount()
+	liveUpstream := &httpUpstreamRecorder{responses: []*http.Response{
+		codeBuddyResponse(http.StatusOK, nil, `{"code":0,"data":{"accessToken":"fresh-access","refreshToken":"fresh-refresh","expiresIn":3600}}`),
+		codeBuddyResponse(http.StatusOK, nil, `{"data":[{"id":"gemini-3.1-pro","displayName":"Live Gemini","tags":["chat"],"contextWindow":900000,"maxTokens":24000},{"id":"image-only","tags":["image"]}]}`),
+	}}
+	account.Credentials["expiresAt"] = time.Now().Add(-time.Minute).UnixMilli()
+	tokens := NewCodeBuddyTokenProvider(nil, liveUpstream)
+	gateway := NewCodeBuddyGatewayService(tokens, liveUpstream)
+	svc := &AccountTestService{httpUpstream: liveUpstream, cfg: upstreamModelSyncTestConfig(), codeBuddyGatewayService: gateway}
+	models, body, err := svc.fetchCodeBuddyUpstreamModels(context.Background(), account)
+	require.NoError(t, err)
+	require.Equal(t, []string{"cb/gemini-3.1-pro"}, models)
+	require.Contains(t, string(body), `"source":"codebuddy_live"`)
+	require.Len(t, liveUpstream.requests, 2)
+	require.Equal(t, "/console/enterprises/enterprise-1/config/models", liveUpstream.requests[1].URL.Path)
+	require.Equal(t, "Bearer fresh-access", liveUpstream.requests[1].Header.Get("Authorization"))
+	require.Empty(t, liveUpstream.requests[1].Header.Get("X-Refresh-Token"))
+
+	failingUpstream := &httpUpstreamRecorder{err: errors.New("catalog unavailable")}
+	fallbackGateway := NewCodeBuddyGatewayService(NewCodeBuddyTokenProvider(nil, failingUpstream), failingUpstream)
+	fallbackService := &AccountTestService{httpUpstream: failingUpstream, cfg: upstreamModelSyncTestConfig(), codeBuddyGatewayService: fallbackGateway}
+	fallbackAccount := codeBuddyCLIAccount()
+	fallbackModels, fallbackBody, err := fallbackService.fetchCodeBuddyUpstreamModels(context.Background(), fallbackAccount)
+	require.NoError(t, err)
+	require.Contains(t, fallbackModels, "cb/gemini-3.1-pro")
+	require.Contains(t, string(fallbackBody), `"source":"codebuddy_fallback"`)
+}
+
+func TestFetchWorkBuddyModelsUsesGlobalCatalogCapabilities(t *testing.T) {
+	account := codeBuddyCLIAccount()
+	account.Platform = PlatformWorkBuddy
+	account.Credentials["domain"] = "www.workbuddy.ai"
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{codeBuddyResponse(http.StatusOK, nil, `{"data":[{"id":"gpt-5.4","displayName":"GPT 5.4","tags":["chat"],"supportsReasoning":true,"supportsImages":true,"supportsToolCall":true,"reasoning":{"defaultEffort":"medium","supportedEfforts":["low","medium","high"],"canDisableThinking":true},"modelContextWindow":{"defaultLength":400000,"supportedLengths":[128000,400000]},"maxOutputTokens":32000}]}`)}}
+	gateway := NewCodeBuddyGatewayService(NewCodeBuddyTokenProvider(nil, upstream), upstream)
+	svc := &AccountTestService{httpUpstream: upstream, cfg: upstreamModelSyncTestConfig(), codeBuddyGatewayService: gateway}
+	models, body, err := svc.fetchCodeBuddyUpstreamModels(context.Background(), account)
+	require.NoError(t, err)
+	require.Equal(t, []string{"cb/gpt-5.4"}, models)
+	require.Len(t, upstream.requests, 1)
+	require.Equal(t, "/v2/enterprises/personal/models", upstream.requests[0].URL.Path)
+	require.Contains(t, string(body), `"source":"workbuddy_live"`)
+	require.Contains(t, string(body), `"default_reasoning_level":"medium"`)
+	require.Contains(t, string(body), `"supported_reasoning_levels":["low","medium","high"]`)
+	require.Contains(t, string(body), `"supports_tool_call":true`)
+	require.Contains(t, string(body), `"context_window":400000`)
+}
+
+func TestFetchQoderUpstreamModelsUsesLiveEnvironmentCatalog(t *testing.T) {
+	zero := 0.0
+	upstream := qoderUpstreamStub{do: func(req *http.Request) (*http.Response, error) {
+		require.Equal(t, "Bearer qoder-pat", req.Header.Get("Authorization"))
+		return qoderJSONResponse(http.StatusOK, map[string]any{
+			"data": []any{
+				map[string]any{
+					"metadata": map[string]any{
+						"available_models": []any{
+							map[string]any{"value": "lite", "displayName": "Live Lite", "priceFactor": zero, "source": "environment"},
+							map[string]any{"value": "future_model", "displayName": "Future"},
+						},
+					},
+				},
+			},
+		}), nil
+	}}
+	service := &AccountTestService{httpUpstream: upstream, cfg: upstreamModelSyncTestConfig()}
+	account := &Account{ID: 9, Platform: PlatformQoder, Credentials: map[string]any{"token": "qoder-pat"}, Concurrency: 1}
+	models, body, err := service.fetchQoderUpstreamModels(context.Background(), account)
+	require.NoError(t, err)
+	require.Equal(t, []string{"qr/Lite", "qr/future_model"}, models)
+	require.Contains(t, string(body), `"source":"qoder_live"`)
+	require.Contains(t, string(body), `"display_name":"Live Lite"`)
+}
+
+func TestFetchQoderUpstreamModelsFallsBackWhenEnvironmentUnavailable(t *testing.T) {
+	var calls int
+	upstream := qoderUpstreamStub{do: func(*http.Request) (*http.Response, error) {
+		calls++
+		return nil, errors.New("network unavailable")
+	}}
+	service := &AccountTestService{httpUpstream: upstream, cfg: upstreamModelSyncTestConfig()}
+	account := &Account{ID: 9, Platform: PlatformQoder, Credentials: map[string]any{"token": "qoder-pat"}, Concurrency: 1}
+	models, body, err := service.fetchQoderUpstreamModels(context.Background(), account)
+	require.NoError(t, err)
+	require.Equal(t, 4, calls)
+	require.Contains(t, models, "qr/Lite")
+	require.Contains(t, string(body), `"source":"qoder_fallback"`)
 }
 
 func TestExtractUpstreamModelIDs(t *testing.T) {

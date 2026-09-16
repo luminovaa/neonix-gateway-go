@@ -3,7 +3,7 @@ package admin
 import (
 	"net/http"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/response"
 	"github.com/gin-gonic/gin"
 )
 

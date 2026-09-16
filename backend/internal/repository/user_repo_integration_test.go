@@ -10,11 +10,11 @@ import (
 	"testing"
 	"time"
 
-	dbent "github.com/Wei-Shaw/sub2api/ent"
-	"github.com/Wei-Shaw/sub2api/ent/authidentity"
-	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	dbent "github.com/luminovaa/neonix-gateway-go/ent"
+	"github.com/luminovaa/neonix-gateway-go/ent/authidentity"
+	"github.com/luminovaa/neonix-gateway-go/ent/authidentitychannel"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/pagination"
+	"github.com/luminovaa/neonix-gateway-go/internal/service"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -662,15 +662,16 @@ func (s *UserRepoSuite) TestGetFirstAdmin() {
 	s.Require().Equal(admin1.ID, got.ID, "GetFirstAdmin mismatch")
 }
 
-func (s *UserRepoSuite) TestGetFirstAdmin_NoAdmin() {
-	s.mustCreateUser(&service.User{
+func (s *UserRepoSuite) TestGetFirstAdminReturnsActiveLegacyUser() {
+	operator := s.mustCreateUser(&service.User{
 		Email:  "user@example.com",
 		Role:   service.RoleUser,
 		Status: service.StatusActive,
 	})
 
-	_, err := s.repo.GetFirstAdmin(s.ctx)
-	s.Require().Error(err, "expected error when no admin exists")
+	got, err := s.repo.GetFirstAdmin(s.ctx)
+	s.Require().NoError(err)
+	s.Require().Equal(operator.ID, got.ID)
 }
 
 func (s *UserRepoSuite) TestGetFirstAdmin_DisabledAdminIgnored() {

@@ -3,7 +3,7 @@ package service
 import (
 	"fmt"
 
-	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/luminovaa/neonix-gateway-go/internal/domain"
 )
 
 // Status constants
@@ -43,16 +43,55 @@ const (
 	PlatformGemini      = domain.PlatformGemini
 	PlatformAntigravity = domain.PlatformAntigravity
 	PlatformGrok        = domain.PlatformGrok
+	// M365 and Outlook are control-plane identity/mailbox providers. They are
+	// stored explicitly so account and mailbox routes do not rely on ad-hoc
+	// string literals; they are not currently model gateway platforms.
+	PlatformM365    = "m365"
+	PlatformOutlook = "outlook"
 	// 国产 OpenAI 兼容供应商（与 grok 一样经 OpenAI 网关转发）。
 	PlatformKimi      = domain.PlatformKimi
 	PlatformZhipu     = domain.PlatformZhipu
 	PlatformDeepseek  = domain.PlatformDeepseek
 	PlatformMiniMax   = domain.PlatformMiniMax
 	PlatformComposite = domain.PlatformComposite
-	// PlatformKiro is retained for unsupported-platform threshold tests and legacy
-	// account rows. Scheduling-threshold evaluation never pauses kiro accounts.
-	PlatformKiro = "kiro"
+	// PlatformKiro routes Kiro/Amazon Q Developer credentials through the native
+	// AWS EventStream adapter. Scheduling-threshold evaluation never pauses it.
+	PlatformKiro = domain.PlatformKiro
+	// PlatformQoder routes Qoder PAT credentials through the native COSY adapter.
+	PlatformQoder = domain.PlatformQoder
+	// PlatformCodeBuddy routes CodeBuddy CLI OAuth and legacy credentials through
+	// the native CodeBuddy SSE adapter. CodeBuddy China remains a separate slice.
+	PlatformCodeBuddy = domain.PlatformCodeBuddy
+	// PlatformWorkBuddy routes only workbuddy.ai CLI OAuth credentials. Model
+	// names remain cb/*; the selected group is the routing boundary.
+	PlatformWorkBuddy = domain.PlatformWorkBuddy
+	// PlatformCodeBuddyChina uses a static regional bearer token and a separate
+	// model namespace; it must never enter the CodeBuddy .ai OAuth adapter.
+	PlatformCodeBuddyChina = domain.PlatformCodeBuddyChina
 )
+
+var concreteGatewayPlatforms = [...]string{
+	PlatformAnthropic,
+	PlatformGemini,
+	PlatformOpenAI,
+	PlatformAntigravity,
+	PlatformGrok,
+	PlatformKimi,
+	PlatformZhipu,
+	PlatformDeepseek,
+	PlatformMiniMax,
+	PlatformKiro,
+	PlatformQoder,
+	PlatformCodeBuddy,
+	PlatformWorkBuddy,
+	PlatformCodeBuddyChina,
+}
+
+// ConcreteGatewayPlatforms returns every platform that can own a routable
+// gateway group. The copy prevents callers from mutating the canonical list.
+func ConcreteGatewayPlatforms() []string {
+	return append([]string(nil), concreteGatewayPlatforms[:]...)
+}
 
 // 账号接入模式（国产供应商）：按量付费 vs Coding Plan。
 const (

@@ -3,6 +3,7 @@ package dto
 import (
 	"testing"
 
+	"github.com/luminovaa/neonix-gateway-go/internal/service"
 	"github.com/stretchr/testify/require"
 )
 
@@ -82,13 +83,7 @@ func TestRedactCredentials_DoesNotMutateInput(t *testing.T) {
 }
 
 func TestRedactCredentials_AllKnownSensitiveKeys(t *testing.T) {
-	keys := []string{
-		"access_token", "refresh_token", "id_token",
-		"api_key", "session_key", "cookie",
-		"aws_secret_access_key", "aws_session_token",
-		"service_account_json", "service_account", "private_key",
-		"agent_private_key",
-	}
+	keys := service.SensitiveCredentialKeys
 	in := make(map[string]any, len(keys))
 	for _, k := range keys {
 		in[k] = "filled"
@@ -98,4 +93,20 @@ func TestRedactCredentials_AllKnownSensitiveKeys(t *testing.T) {
 	for _, k := range keys {
 		require.True(t, status["has_"+k], "key %s 应在 status 中标记为已配置", k)
 	}
+}
+
+func TestRedactCredentials_CodeBuddyCamelCaseSecrets(t *testing.T) {
+	in := map[string]any{
+		"accessToken": "access-secret", "refreshToken": "refresh-secret",
+		"apiKey": "api-secret", "authToken": "auth-secret",
+		"sessionToken": "session-secret", "rawCookies": "cookie-secret",
+		"userId": "safe-user-id", "enterpriseId": "safe-enterprise-id",
+	}
+	out, status := RedactCredentials(in)
+	for _, key := range []string{"accessToken", "refreshToken", "apiKey", "authToken", "sessionToken", "rawCookies"} {
+		require.NotContains(t, out, key)
+		require.True(t, status["has_"+key], key)
+	}
+	require.Equal(t, "safe-user-id", out["userId"])
+	require.Equal(t, "safe-enterprise-id", out["enterpriseId"])
 }

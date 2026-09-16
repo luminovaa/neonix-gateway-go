@@ -112,6 +112,27 @@ func isGrokTeamModelRateLimited(account *Account, model string, now time.Time) b
 	return true
 }
 
+// ClearGrokAccountTeamModelRateLimits removes process-local team/model locks
+// after a successful credential re-login. The refreshed account may now have a
+// new team identity, so only locks associated with its current team are removed.
+func ClearGrokAccountTeamModelRateLimits(account *Account) {
+	if account == nil {
+		return
+	}
+	fingerprint := grokTeamFingerprint(accountGrokTeamID(account))
+	if fingerprint == "" {
+		return
+	}
+	prefix := fingerprint + "|"
+	globalGrokTeamModelRateLimits.mu.Lock()
+	defer globalGrokTeamModelRateLimits.mu.Unlock()
+	for key := range globalGrokTeamModelRateLimits.items {
+		if strings.HasPrefix(key, prefix) {
+			delete(globalGrokTeamModelRateLimits.items, key)
+		}
+	}
+}
+
 // filterGrokTeamModelRateLimitedAccounts drops candidates whose team is under a
 // model-scoped rate-limit cool. Accounts without team_id pass through.
 func filterGrokTeamModelRateLimitedAccounts(accounts []Account, model string, now time.Time) []Account {

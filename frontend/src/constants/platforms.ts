@@ -19,7 +19,11 @@ export const CONCRETE_PLATFORM_OPTIONS = [
   { value: 'kimi', label: 'Kimi' },
   { value: 'zhipu', label: 'Zhipu GLM' },
   { value: 'deepseek', label: 'DeepSeek' },
-  { value: 'minimax', label: 'MiniMax' }
+  { value: 'minimax', label: 'MiniMax' },
+  { value: 'kiro', label: 'Kiro' },
+  { value: 'qoder', label: 'Qoder' },
+  { value: 'codebuddy', label: 'CodeBuddy' },
+  { value: 'codebuddy-china', label: 'CodeBuddy China' }
 ] as const satisfies readonly PlatformOption<AccountPlatform>[]
 
 /** Platforms that can own a group. */

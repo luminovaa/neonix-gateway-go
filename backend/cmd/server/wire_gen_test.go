@@ -1,14 +1,38 @@
 package main
 
 import (
+	"os"
+	"strings"
 	"testing"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/handler"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/luminovaa/neonix-gateway-go/internal/config"
+	"github.com/luminovaa/neonix-gateway-go/internal/handler"
+	"github.com/luminovaa/neonix-gateway-go/internal/service"
 	"github.com/stretchr/testify/require"
 )
+
+func TestProductionWireOmitsInheritedSaaSGraph(t *testing.T) {
+	source, err := os.ReadFile("wire_gen.go")
+	require.NoError(t, err)
+	text := string(source)
+
+	require.Contains(t, text, "service.ProvideOperatorAuthService")
+	require.Contains(t, text, "service.ProvideNeonixAdminService")
+	require.Contains(t, text, "handler.ProvideNeonixHandlers")
+	for _, forbidden := range []string{
+		"service.ProvideAuthService",
+		"service.NewPromoService",
+		"service.NewRedeemService",
+		"service.NewSubscriptionService",
+		"service.NewAffiliateService",
+		"service.ProvidePaymentService",
+		"service.ProvidePaymentOrderExpiryService",
+		"service.ProvideSubscriptionExpiryService",
+	} {
+		require.False(t, strings.Contains(text, forbidden), "production Wire must omit %s", forbidden)
+	}
+}
 
 func TestProvideServiceBuildInfo(t *testing.T) {
 	in := handler.BuildInfo{
@@ -42,7 +66,6 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 	accountExpirySvc := service.NewAccountExpiryService(nil, time.Second)
 	codexVersionSyncSvc := service.NewOpenAICodexVersionSyncService(nil, nil, nil, time.Second)
 	proxyExpirySvc := service.NewProxyExpiryService(nil, time.Second)
-	subscriptionExpirySvc := service.NewSubscriptionExpiryService(nil, time.Second)
 	pricingSvc := service.NewPricingService(cfg, nil)
 	emailQueueSvc := service.NewEmailQueueService(nil, 1)
 	billingCacheSvc := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
@@ -69,7 +92,6 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		nil, // cnProviderBalanceCheck
 		codexVersionSyncSvc,
 		proxyExpirySvc,
-		subscriptionExpirySvc,
 		&service.UsageCleanupService{},
 		idempotencyCleanupSvc,
 		&service.BatchImageCleanupService{},
@@ -78,7 +100,6 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		emailQueueSvc,
 		billingCacheSvc,
 		&service.UsageRecordWorkerPool{},
-		&service.SubscriptionService{},
 		oauthSvc,
 		openAIOAuthSvc,
 		geminiOAuthSvc,
@@ -87,7 +108,6 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		nil, // openAIGateway
 		nil, // scheduledTestRunner
 		nil, // backupSvc
-		nil, // paymentOrderExpiry
 		nil, // channelMonitorRunner
 		nil, // channelMonitorV2Aggregator
 		nil, // quotaFlusher

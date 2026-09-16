@@ -10,9 +10,9 @@ import (
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
-	"github.com/Wei-Shaw/sub2api/ent/identityadoptiondecision"
-	"github.com/Wei-Shaw/sub2api/ent/pendingauthsession"
-	"github.com/Wei-Shaw/sub2api/ent/user"
+	"github.com/luminovaa/neonix-gateway-go/ent/identityadoptiondecision"
+	"github.com/luminovaa/neonix-gateway-go/ent/pendingauthsession"
+	"github.com/luminovaa/neonix-gateway-go/ent/user"
 )
 
 // PendingAuthSession is the model entity for the PendingAuthSession schema.

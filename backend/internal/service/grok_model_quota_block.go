@@ -107,6 +107,23 @@ func isGrokModelQuotaBlocked(accountID int64, model string, now time.Time) bool 
 	return true
 }
 
+// ClearGrokAccountModelQuotaBlocks removes process-local model cooldowns after
+// a successful re-login has replaced the account credential. Persistent model
+// locks are cleared atomically by the repository before this is called.
+func ClearGrokAccountModelQuotaBlocks(accountID int64) {
+	if accountID <= 0 {
+		return
+	}
+	suffix := "|" + strconv.FormatInt(accountID, 10)
+	globalGrokModelQuotaBlocks.mu.Lock()
+	defer globalGrokModelQuotaBlocks.mu.Unlock()
+	for key := range globalGrokModelQuotaBlocks.items {
+		if strings.HasSuffix(key, suffix) {
+			delete(globalGrokModelQuotaBlocks.items, key)
+		}
+	}
+}
+
 func filterGrokModelQuotaBlockedAccounts(accounts []Account, model string, now time.Time) []Account {
 	if len(accounts) == 0 || strings.TrimSpace(model) == "" {
 		return accounts

@@ -2,10 +2,11 @@
 package routes
 
 import (
-	"github.com/Wei-Shaw/sub2api/internal/handler"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
-	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/luminovaa/neonix-gateway-go/internal/handler"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/response"
+	"github.com/luminovaa/neonix-gateway-go/internal/provider"
+	"github.com/luminovaa/neonix-gateway-go/internal/server/middleware"
+	"github.com/luminovaa/neonix-gateway-go/internal/service"
 
 	"github.com/gin-gonic/gin"
 )
@@ -34,11 +35,13 @@ func RegisterAdminRoutes(
 		// 部署与运营合规确认
 		registerAdminComplianceRoutes(admin, h)
 
+		// Neonix provider metadata is a single source for the admin UI.
+		admin.GET("/providers/summary", func(c *gin.Context) {
+			response.Success(c, gin.H{"providers": provider.All()})
+		})
+
 		// 仪表盘
 		registerDashboardRoutes(admin, h)
-
-		// 用户管理
-		registerUserManagementRoutes(admin, h)
 
 		// 分组管理
 		registerGroupRoutes(admin, h)
@@ -67,12 +70,6 @@ func RegisterAdminRoutes(
 		// 代理管理
 		registerProxyRoutes(admin, h, stepUpAuth)
 
-		// 卡密管理
-		registerRedeemCodeRoutes(admin, h)
-
-		// 优惠码管理
-		registerPromoCodeRoutes(admin, h)
-
 		// 系统设置
 		registerSettingsRoutes(admin, h)
 
@@ -87,9 +84,6 @@ func RegisterAdminRoutes(
 
 		// 系统管理
 		registerSystemRoutes(admin, h)
-
-		// 订阅管理
-		registerSubscriptionRoutes(admin, h)
 
 		// 使用记录管理
 		registerUsageRoutes(admin, h)
@@ -124,9 +118,6 @@ func RegisterAdminRoutes(
 
 		// 独立提示词输入审计
 		registerPromptAuditRoutes(admin, h)
-
-		// 邀请返利（专属用户管理）
-		registerAffiliateRoutes(admin, h)
 
 		// 操作审计日志
 		registerAuditLogRoutes(admin, h, stepUpAuth)

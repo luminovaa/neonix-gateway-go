@@ -20,8 +20,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
-	pluginv1 "github.com/Wei-Shaw/sub2api/pkg/pluginapi/v1"
+	"github.com/luminovaa/neonix-gateway-go/internal/config"
+	pluginv1 "github.com/luminovaa/neonix-gateway-go/pkg/pluginapi/v1"
 )
 
 const (

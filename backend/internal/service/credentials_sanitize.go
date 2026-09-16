@@ -1,7 +1,9 @@
 package service
 
-// SanitizeStoredCredentials strips secrets that must never be persisted on the
-// account credentials map after conversion to OAuth tokens (Grok Web SSO / password).
+// SanitizeStoredCredentials strips ephemeral secrets that must never be
+// persisted on the provider credential document after OAuth conversion.
+// Grok re-login passwords live in a separate encrypted automation-secret
+// table and therefore must also be removed from this provider document.
 // Call from admin create/update/import/apply-oauth paths.
 //
 // Cookie is always stripped: bulk paths may pass an empty platform label, and
@@ -13,7 +15,8 @@ func SanitizeStoredCredentials(platform string, creds map[string]any) map[string
 	}
 	_ = platform
 	for _, key := range []string{
-		"password", "sso_token", "sso", "sso-rw", "clearTextPassword", "cookie",
+		"password", "relogin_password", "reloginPassword", "sso_token", "sso", "sso-rw",
+		"clearTextPassword", "clear_text_password", "cookie",
 	} {
 		delete(creds, key)
 	}

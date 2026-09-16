@@ -1236,6 +1236,10 @@ function generateRoutedCodexFiles(
     zhipu: 'glm-4.7',
     deepseek: 'deepseek-v4-pro',
     minimax: 'MiniMax-M3',
+    kiro: 'CLAUDE_SONNET_4_20250514_V1_0',
+    qoder: 'qr/Lite',
+    codebuddy: 'cb/gemini-3.1-pro',
+    'codebuddy-china': 'cbc/deepseek-v3',
     composite: 'gpt-5.5'
   }
   const preferredModel = preferredModels[platform] || ''
@@ -1250,6 +1254,10 @@ function generateRoutedCodexFiles(
     zhipu: 'Zhipu',
     deepseek: 'DeepSeek',
     minimax: 'MiniMax',
+    kiro: 'Kiro',
+    qoder: 'Qoder',
+    codebuddy: 'CodeBuddy',
+    'codebuddy-china': 'CodeBuddy China',
     composite: 'Composite'
   }
   const label = labels[platform]

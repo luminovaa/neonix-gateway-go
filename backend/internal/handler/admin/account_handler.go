@@ -11,24 +11,28 @@ import (
 	"log"
 	"log/slog"
 	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/domain"
-	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/luminovaa/neonix-gateway-go/internal/config"
+	"github.com/luminovaa/neonix-gateway-go/internal/domain"
+	"github.com/luminovaa/neonix-gateway-go/internal/handler/dto"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/antigravity"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/claude"
+	infraerrors "github.com/luminovaa/neonix-gateway-go/internal/pkg/errors"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/geminicli"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/m365"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/openai"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/response"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/timezone"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/xai"
+	"github.com/luminovaa/neonix-gateway-go/internal/provider"
+	"github.com/luminovaa/neonix-gateway-go/internal/service"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/sync/errgroup"
@@ -53,6 +57,12 @@ type AccountHandler struct {
 	openaiOAuthService      *service.OpenAIOAuthService
 	geminiOAuthService      *service.GeminiOAuthService
 	antigravityOAuthService *service.AntigravityOAuthService
+	kiroOAuthService        *service.KiroOAuthService
+	m365OAuthService        *service.M365OAuthService
+	mailboxOAuthService     *service.MailboxOAuthService
+	mailboxRuntime          *service.PythonMailboxRuntime
+	mailboxPollMu           sync.Mutex
+	mailboxPolls            map[int64]struct{}
 	grokOAuthService        service.GrokOAuthTokenService
 	rateLimitService        *service.RateLimitService
 	accountUsageService     *service.AccountUsageService
@@ -63,9 +73,17 @@ type AccountHandler struct {
 	rpmCache                service.RPMCache
 	tokenCacheInvalidator   service.TokenCacheInvalidator
 	grokImportProber        grokImportProber
+	grokDeviceOAuthService  *service.GrokOAuthService
+	codeBuddyDeviceLogin    *service.CodeBuddyDeviceLoginService
 	upstreamBillingProbe    *service.UpstreamBillingProbeService
 	ollamaCloudUsage        *service.OllamaCloudUsageService
 	cfg                     *config.Config
+}
+
+func (h *AccountHandler) SetCodeBuddyDeviceLoginService(login *service.CodeBuddyDeviceLoginService) {
+	if h != nil {
+		h.codeBuddyDeviceLogin = login
+	}
 }
 
 // SetUpstreamBillingProbeService attaches the optional remote billing probe service.
@@ -94,12 +112,17 @@ func NewAccountHandler(
 	rpmCache service.RPMCache,
 	tokenCacheInvalidator service.TokenCacheInvalidator,
 ) *AccountHandler {
-	return &AccountHandler{
+	h := &AccountHandler{
 		adminService:            adminService,
 		oauthService:            oauthService,
 		openaiOAuthService:      openaiOAuthService,
 		geminiOAuthService:      geminiOAuthService,
 		antigravityOAuthService: antigravityOAuthService,
+		kiroOAuthService:        service.NewKiroOAuthService(),
+		m365OAuthService:        service.NewM365OAuthService(),
+		mailboxOAuthService:     service.NewMailboxOAuthService(),
+		mailboxRuntime:          service.NewPythonMailboxRuntime(),
+		mailboxPolls:            make(map[int64]struct{}),
 		grokOAuthService:        grokOAuthService,
 		rateLimitService:        rateLimitService,
 		accountUsageService:     accountUsageService,
@@ -110,6 +133,10 @@ func NewAccountHandler(
 		rpmCache:                rpmCache,
 		tokenCacheInvalidator:   tokenCacheInvalidator,
 	}
+	if concrete, ok := grokOAuthService.(*service.GrokOAuthService); ok {
+		h.grokDeviceOAuthService = concrete
+	}
+	return h
 }
 
 // CreateAccountRequest represents create account request
@@ -865,6 +892,1193 @@ func (h *AccountHandler) List(c *gin.Context) {
 	}
 
 	response.Paginated(c, result, total, page, pageSize)
+}
+
+// ListCompat keeps the legacy Neonix account-list shape while the richer
+// Sub2API list endpoint remains available under /api/v1. It deliberately uses
+// the shallow DTO and does not include credential values.
+func (h *AccountHandler) ListCompat(c *gin.Context) {
+	if h == nil || h.adminService == nil {
+		response.Success(c, gin.H{"accounts": []any{}, "groups": []any{}, "tags": []any{}, "pagination": gin.H{"page": 1, "pageSize": 20, "totalItems": 0, "totalPages": 1}})
+		return
+	}
+	page, pageSize := response.ParsePagination(c)
+	var accounts []service.Account
+	var total int64
+	var err error
+	providerFilter := splitCompatProviders(c.Query("providers"))
+	if len(providerFilter) > 0 {
+		all, listErr := h.adminService.ListAccountsForSchedulerScoreFilter(c.Request.Context(), "", "", c.Query("status"), strings.TrimSpace(c.Query("search")), 0, "")
+		err = listErr
+		if listErr == nil {
+			filtered := make([]service.Account, 0, len(all))
+			for i := range all {
+				if _, wanted := providerFilter[neonixAccountProvider(&all[i])]; wanted {
+					filtered = append(filtered, all[i])
+				}
+			}
+			total = int64(len(filtered))
+			start := (page - 1) * pageSize
+			if start < len(filtered) {
+				end := start + pageSize
+				if end > len(filtered) {
+					end = len(filtered)
+				}
+				accounts = filtered[start:end]
+			}
+		}
+	} else {
+		accounts, total, err = h.adminService.ListAccounts(
+			c.Request.Context(), page, pageSize,
+			c.Query("platform"), c.Query("type"), c.Query("status"), strings.TrimSpace(c.Query("search")), 0, "",
+			c.DefaultQuery("sort_by", "name"), c.DefaultQuery("sort_order", "asc"),
+		)
+	}
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	items := make([]any, 0, len(accounts))
+	for index := range accounts {
+		items = append(items, neonixAccountView(&accounts[index]))
+	}
+	pages := int64(1)
+	if pageSize > 0 && total > 0 {
+		pages = (total + int64(pageSize) - 1) / int64(pageSize)
+	}
+	response.Success(c, gin.H{
+		"accounts": items,
+		"groups":   []any{},
+		"tags":     []any{},
+		"pagination": gin.H{
+			"page": page, "pageSize": pageSize, "totalItems": total, "totalPages": pages,
+		},
+		"stats": gin.H{"total": total},
+	})
+}
+
+func splitCompatProviders(raw string) map[string]struct{} {
+	result := make(map[string]struct{})
+	for _, value := range strings.Split(raw, ",") {
+		if value = strings.TrimSpace(value); value != "" {
+			result[value] = struct{}{}
+		}
+	}
+	return result
+}
+
+func neonixAccountProvider(account *service.Account) string {
+	if account == nil {
+		return ""
+	}
+	if source, ok := account.Extra["source_provider"].(string); ok && strings.TrimSpace(source) != "" {
+		return strings.TrimSpace(source)
+	}
+	return account.Platform
+}
+
+// ProviderSummary exposes account coverage without returning credentials. It
+// is used by the Neonix operator UI while the Node account service is being
+// retired; source_provider is optional so legacy rows remain visible.
+func (h *AccountHandler) ProviderSummary(c *gin.Context) {
+	if h == nil || h.adminService == nil {
+		response.Success(c, gin.H{"providers": provider.BuildSummary(nil)})
+		return
+	}
+	accounts, err := h.adminService.ListAccountsForSchedulerScoreFilter(c.Request.Context(), "", "", "", "", 0, "")
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	snapshots := make([]provider.AccountSnapshot, 0, len(accounts))
+	for _, account := range accounts {
+		sourceProvider := ""
+		if account.Extra != nil {
+			if value, ok := account.Extra["source_provider"].(string); ok {
+				sourceProvider = value
+			}
+		}
+		snapshots = append(snapshots, provider.AccountSnapshot{
+			SourceProvider: sourceProvider,
+			Platform:       account.Platform,
+			Status:         account.Status,
+			Schedulable:    account.Schedulable,
+		})
+	}
+	response.Success(c, gin.H{"providers": provider.BuildSummary(snapshots)})
+}
+
+// IDsCompat returns only stable account identifiers for cross-page selection;
+// it intentionally avoids loading or serializing credentials.
+func (h *AccountHandler) IDsCompat(c *gin.Context) {
+	if h == nil || h.adminService == nil {
+		response.Success(c, gin.H{"ids": []string{}, "total": 0})
+		return
+	}
+	accounts, err := h.adminService.ListAccountsForSchedulerScoreFilter(c.Request.Context(), "", "", "", "", 0, "")
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	ids := make([]string, 0, len(accounts))
+	for _, account := range accounts {
+		ids = append(ids, strconv.FormatInt(account.ID, 10))
+	}
+	response.Success(c, gin.H{"ids": ids, "total": len(ids)})
+}
+
+// UpdateEnabled is the compatibility adapter for Neonix's boolean enabled
+// field. Sub2API stores the same switch as schedulable, so translating it in
+// one place avoids exposing that storage detail to the UI.
+func (h *AccountHandler) UpdateEnabled(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "invalid account ID")
+		return
+	}
+	var req struct {
+		Enabled *bool `json:"enabled" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.Enabled == nil {
+		response.BadRequest(c, "enabled is required")
+		return
+	}
+	account, err := h.adminService.SetAccountSchedulable(c.Request.Context(), accountID, *req.Enabled)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{
+		"ok":      true,
+		"account": neonixAccountView(account),
+	})
+}
+
+type antigravityOAuthCompatRequest struct {
+	LoginID     string `json:"loginId" binding:"required"`
+	CallbackURL string `json:"callbackUrl" binding:"required"`
+}
+
+// CheckCompat performs a forced usage/credential check for the legacy Accounts
+// action. The response stays a direct JSON object after compatibility
+// flattening and never includes raw credentials.
+func (h *AccountHandler) CheckCompat(c *gin.Context) {
+	h.checkOrWarmupCompat(c, true)
+}
+
+// WarmupCompat shares the same bounded provider probe used by the check action.
+// Keeping this as a separate endpoint preserves the UI contract while the Go
+// provider adapters converge on one warmup implementation.
+func (h *AccountHandler) WarmupCompat(c *gin.Context) {
+	h.checkOrWarmupCompat(c, true)
+}
+
+func (h *AccountHandler) checkOrWarmupCompat(c *gin.Context, force bool) {
+	if h == nil || h.adminService == nil {
+		response.InternalError(c, "Account service is not configured")
+		return
+	}
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || accountID <= 0 {
+		response.BadRequest(c, "invalid account ID")
+		return
+	}
+	account, err := h.adminService.GetAccount(c.Request.Context(), accountID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if account.Platform == service.PlatformKiro && h.accountTestService != nil {
+		recorder := httptest.NewRecorder()
+		probe, _ := gin.CreateTestContext(recorder)
+		probe.Request = c.Request.Clone(c.Request.Context())
+		modelID := "CLAUDE_SONNET_4_20250514_V1_0"
+		if mapping := account.GetModelMapping(); len(mapping) > 0 {
+			models := make([]string, 0, len(mapping))
+			for candidate := range mapping {
+				if strings.TrimSpace(candidate) != "" {
+					models = append(models, candidate)
+				}
+			}
+			sort.Strings(models)
+			if len(models) > 0 {
+				modelID = models[0]
+			}
+		}
+		if err := h.accountTestService.TestAccountConnection(probe, accountID, modelID, "hi", ""); err != nil {
+			response.Error(c, http.StatusBadGateway, "Kiro account probe failed")
+			return
+		}
+		if !accountProbeSucceeded(recorder.Body.Bytes()) {
+			response.Error(c, http.StatusBadGateway, "Kiro account probe failed")
+			return
+		}
+	}
+	if account.Platform == service.PlatformQoder && h.accountTestService != nil {
+		recorder := httptest.NewRecorder()
+		probe, _ := gin.CreateTestContext(recorder)
+		probe.Request = c.Request.Clone(c.Request.Context())
+		if err := h.accountTestService.TestAccountConnection(probe, accountID, "qr/Lite", "hi", ""); err != nil {
+			response.Error(c, http.StatusBadGateway, "Qoder account probe failed")
+			return
+		}
+		if !accountProbeSucceeded(recorder.Body.Bytes()) {
+			response.Error(c, http.StatusBadGateway, "Qoder account probe failed")
+			return
+		}
+		response.Success(c, gin.H{"ok": true, "usage": nil, "account": neonixAccountView(account)})
+		return
+	}
+	if (account.Platform == service.PlatformCodeBuddy || account.Platform == service.PlatformWorkBuddy) && h.accountTestService != nil {
+		recorder := httptest.NewRecorder()
+		probe, _ := gin.CreateTestContext(recorder)
+		probe.Request = c.Request.Clone(c.Request.Context())
+		if err := h.accountTestService.TestAccountConnection(probe, accountID, "cb/", "hi", ""); err != nil {
+			response.Error(c, http.StatusBadGateway, "CodeBuddy account probe failed")
+			return
+		}
+		if !accountProbeSucceeded(recorder.Body.Bytes()) {
+			response.Error(c, http.StatusBadGateway, "CodeBuddy account probe failed")
+			return
+		}
+		response.Success(c, gin.H{"ok": true, "usage": nil, "account": neonixAccountView(account)})
+		return
+	}
+	if account.Platform == service.PlatformCodeBuddyChina && h.accountTestService != nil {
+		recorder := httptest.NewRecorder()
+		probe, _ := gin.CreateTestContext(recorder)
+		probe.Request = c.Request.Clone(c.Request.Context())
+		if err := h.accountTestService.TestAccountConnection(probe, accountID, "cbc/deepseek-v3", "hi", ""); err != nil {
+			response.Error(c, http.StatusBadGateway, "CodeBuddy China account probe failed")
+			return
+		}
+		if !accountProbeSucceeded(recorder.Body.Bytes()) {
+			response.Error(c, http.StatusBadGateway, "CodeBuddy China account probe failed")
+			return
+		}
+		response.Success(c, gin.H{"ok": true, "usage": nil, "account": neonixAccountView(account)})
+		return
+	}
+	var usage *service.UsageInfo
+	if h.accountUsageService != nil {
+		usage, err = h.accountUsageService.GetUsage(c.Request.Context(), accountID, force)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+	}
+	response.Success(c, gin.H{"ok": true, "usage": usage, "account": neonixAccountView(account)})
+}
+
+// accountProbeSucceeded accepts only a real successful terminal SSE event.
+// A substring check can be fooled by an error message that happens to quote a
+// test_complete payload, and it cannot distinguish success:false.
+func accountProbeSucceeded(body []byte) bool {
+	for _, line := range strings.Split(string(body), "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		var event struct {
+			Type    string `json:"type"`
+			Success bool   `json:"success"`
+		}
+		if err := json.Unmarshal([]byte(strings.TrimSpace(strings.TrimPrefix(line, "data:"))), &event); err != nil {
+			continue
+		}
+		if event.Type == "test_complete" && event.Success {
+			return true
+		}
+	}
+	return false
+}
+
+type codexDeviceOAuthCompatRequest struct {
+	LoginID string `json:"loginId" binding:"required"`
+}
+
+// StartCodexOAuthCompat starts the official Codex device login. The device
+// authorization code and PKCE verifier stay inside the Go service; the UI only
+// receives the verification URL, user code, interval, and expiry.
+func (h *AccountHandler) StartCodexOAuthCompat(c *gin.Context) {
+	if h == nil || h.openaiOAuthService == nil {
+		response.InternalError(c, "Codex OAuth is not configured")
+		return
+	}
+	result, err := h.openaiOAuthService.StartCodexDevice(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
+// PollCodexOAuthCompat performs one device poll and, after approval, persists
+// the token bundle before consuming the in-memory session. This makes a
+// transient database failure retryable without asking the operator to log in
+// again, while never returning a token or auth JSON to the browser.
+func (h *AccountHandler) PollCodexOAuthCompat(c *gin.Context) {
+	if h == nil || h.openaiOAuthService == nil || h.adminService == nil {
+		response.InternalError(c, "Codex OAuth is not configured")
+		return
+	}
+	var req codexDeviceOAuthCompatRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "invalid Codex OAuth request")
+		return
+	}
+	result, err := h.openaiOAuthService.PollCodexDevice(c.Request.Context(), strings.TrimSpace(req.LoginID))
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if result.Pending {
+		response.Success(c, gin.H{
+			"status":     "pending",
+			"retryAfter": result.RetryAfter,
+			"expiresAt":  result.ExpiresAt,
+		})
+		return
+	}
+	if result.TokenInfo == nil {
+		response.InternalError(c, "Codex OAuth did not return token information")
+		return
+	}
+	tokenInfo := result.TokenInfo
+	credentials := h.openaiOAuthService.BuildAccountCredentials(tokenInfo)
+	refreshToken := strings.TrimSpace(tokenInfo.RefreshToken)
+
+	accounts, err := h.adminService.ListAccountsForSchedulerScoreFilter(c.Request.Context(), service.PlatformOpenAI, "", "", "", 0, "")
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	var existing *service.Account
+	for index := range accounts {
+		candidate := &accounts[index]
+		if accountID := strings.TrimSpace(tokenInfo.ChatGPTAccountID); accountID != "" {
+			for _, key := range []string{"chatgpt_account_id", "account_id", "user_id"} {
+				if strings.EqualFold(accountID, strings.TrimSpace(candidate.GetCredential(key))) {
+					existing = candidate
+					break
+				}
+			}
+		}
+		if existing == nil && strings.TrimSpace(tokenInfo.Email) != "" && strings.EqualFold(strings.TrimSpace(tokenInfo.Email), strings.TrimSpace(candidate.GetCredential("email"))) {
+			existing = candidate
+		}
+		if existing != nil {
+			break
+		}
+	}
+	if existing != nil {
+		if refreshToken == "" {
+			refreshToken = strings.TrimSpace(existing.GetCredential("refresh_token"))
+			if refreshToken != "" {
+				credentials["refresh_token"] = refreshToken
+			}
+		}
+	}
+	if refreshToken == "" {
+		response.BadRequest(c, "Codex OAuth did not return a refresh token")
+		return
+	}
+	if authJSON := buildCodexAuthJSON(tokenInfo, refreshToken); authJSON != "" {
+		credentials["auth_json"] = authJSON
+		credentials["authJson"] = authJSON
+	}
+
+	var account *service.Account
+	created := false
+	if existing != nil {
+		account, err = h.adminService.UpdateAccount(c.Request.Context(), existing.ID, &service.UpdateAccountInput{
+			Type:        service.AccountTypeOAuth,
+			Credentials: credentials,
+		})
+	} else {
+		name := strings.TrimSpace(tokenInfo.Email)
+		if name == "" {
+			name = strings.TrimSpace(tokenInfo.ChatGPTAccountID)
+		}
+		if name == "" {
+			name = "Codex account"
+		}
+		account, err = h.adminService.CreateAccount(c.Request.Context(), &service.CreateAccountInput{
+			Name:        name,
+			Platform:    service.PlatformOpenAI,
+			Type:        service.AccountTypeOAuth,
+			Credentials: credentials,
+			Extra:       map[string]any{"source_provider": "codex"},
+		})
+		created = true
+	}
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	h.openaiOAuthService.ConsumeCodexDevice(req.LoginID)
+	h.adminService.ForceOpenAIPrivacy(c.Request.Context(), account)
+	response.Success(c, gin.H{
+		"status":  "complete",
+		"created": created,
+		"account": neonixAccountView(account),
+	})
+}
+
+func buildCodexAuthJSON(tokenInfo *service.OpenAITokenInfo, refreshToken string) string {
+	if tokenInfo == nil || strings.TrimSpace(tokenInfo.AccessToken) == "" {
+		return ""
+	}
+	payload := map[string]any{
+		"auth_mode":      "chatgpt",
+		"OPENAI_API_KEY": nil,
+		"tokens": map[string]any{
+			"id_token":      tokenInfo.IDToken,
+			"access_token":  tokenInfo.AccessToken,
+			"refresh_token": refreshToken,
+			"account_id":    tokenInfo.ChatGPTAccountID,
+		},
+		"last_refresh": time.Now().UTC().Format(time.RFC3339),
+	}
+	encoded, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		return ""
+	}
+	return string(encoded)
+}
+
+// CancelCodexOAuthCompat is idempotent so closing or restarting the dialog
+// cannot leave an authorization session resident in memory.
+func (h *AccountHandler) CancelCodexOAuthCompat(c *gin.Context) {
+	if h != nil && h.openaiOAuthService != nil {
+		var req codexDeviceOAuthCompatRequest
+		if c.ShouldBindJSON(&req) == nil {
+			h.openaiOAuthService.CancelCodexDevice(req.LoginID)
+		}
+	}
+	response.Success(c, gin.H{"ok": true, "cancelled": true})
+}
+
+type grokDeviceOAuthCompatRequest struct {
+	LoginID string `json:"loginId" binding:"required"`
+}
+
+// StartGrokOAuthCompat starts the xAI RFC 8628 device login. The xAI device
+// code stays server-side; only the verification URL and user code are sent to
+// the operator UI.
+func (h *AccountHandler) StartGrokOAuthCompat(c *gin.Context) {
+	if h == nil || h.grokDeviceOAuthService == nil {
+		response.InternalError(c, "Grok OAuth is not configured")
+		return
+	}
+	result, err := h.grokDeviceOAuthService.StartGrokDevice(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
+// PollGrokOAuthCompat performs one device poll, upserts by xAI subject/email,
+// and consumes the session only after persistence succeeds.
+func (h *AccountHandler) PollGrokOAuthCompat(c *gin.Context) {
+	if h == nil || h.grokDeviceOAuthService == nil || h.adminService == nil {
+		response.InternalError(c, "Grok OAuth is not configured")
+		return
+	}
+	var req grokDeviceOAuthCompatRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "invalid Grok OAuth request")
+		return
+	}
+	result, err := h.grokDeviceOAuthService.PollGrokDevice(c.Request.Context(), strings.TrimSpace(req.LoginID))
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if result.Pending {
+		response.Success(c, gin.H{"status": "pending", "retryAfter": result.RetryAfter, "expiresAt": result.ExpiresAt})
+		return
+	}
+	if result.TokenInfo == nil {
+		response.InternalError(c, "Grok OAuth did not return token information")
+		return
+	}
+	tokenInfo := result.TokenInfo
+	credentials := h.grokDeviceOAuthService.BuildAccountCredentials(tokenInfo)
+	accounts, err := h.adminService.ListAccountsForSchedulerScoreFilter(c.Request.Context(), service.PlatformGrok, "", "", "", 0, "")
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	var existing *service.Account
+	for index := range accounts {
+		candidate := &accounts[index]
+		if subject := strings.TrimSpace(tokenInfo.Subject); subject != "" {
+			for _, key := range []string{"sub", "user_id", "subject"} {
+				if strings.EqualFold(subject, strings.TrimSpace(candidate.GetCredential(key))) {
+					existing = candidate
+					break
+				}
+			}
+		}
+		if existing == nil && strings.TrimSpace(tokenInfo.Email) != "" && strings.EqualFold(strings.TrimSpace(tokenInfo.Email), strings.TrimSpace(candidate.GetCredential("email"))) {
+			existing = candidate
+		}
+		if existing != nil {
+			break
+		}
+	}
+	if existing != nil && credentialMapString(credentials, "refresh_token") == "" {
+		if oldRefresh := strings.TrimSpace(existing.GetCredential("refresh_token")); oldRefresh != "" {
+			credentials["refresh_token"] = oldRefresh
+		}
+	}
+	if credentialMapString(credentials, "refresh_token") == "" {
+		response.BadRequest(c, "Grok OAuth did not return a refresh token")
+		return
+	}
+	var account *service.Account
+	created := false
+	if existing != nil {
+		account, err = h.adminService.UpdateAccount(c.Request.Context(), existing.ID, &service.UpdateAccountInput{Type: service.AccountTypeOAuth, Credentials: credentials})
+	} else {
+		name := strings.TrimSpace(tokenInfo.Email)
+		if name == "" {
+			name = strings.TrimSpace(tokenInfo.Subject)
+		}
+		if name == "" {
+			name = "Grok account"
+		}
+		account, err = h.adminService.CreateAccount(c.Request.Context(), &service.CreateAccountInput{
+			Name: name, Platform: service.PlatformGrok, Type: service.AccountTypeOAuth,
+			Credentials: credentials, Extra: map[string]any{"source_provider": "grok"},
+		})
+		created = true
+	}
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	h.grokDeviceOAuthService.ConsumeGrokDevice(req.LoginID)
+	response.Success(c, gin.H{"status": "complete", "created": created, "account": neonixAccountView(account)})
+}
+
+func credentialMapString(values map[string]any, key string) string {
+	value, _ := values[key].(string)
+	return strings.TrimSpace(value)
+}
+
+func (h *AccountHandler) CancelGrokOAuthCompat(c *gin.Context) {
+	if h != nil && h.grokDeviceOAuthService != nil {
+		var req grokDeviceOAuthCompatRequest
+		if c.ShouldBindJSON(&req) == nil {
+			h.grokDeviceOAuthService.CancelGrokDevice(req.LoginID)
+		}
+	}
+	response.Success(c, gin.H{"ok": true, "cancelled": true})
+}
+
+type m365OAuthCompatRequest struct {
+	LoginID     string `json:"loginId" binding:"required"`
+	CallbackURL string `json:"callbackUrl" binding:"required"`
+}
+
+// StartM365OAuthCompat starts the manual Microsoft PKCE flow used by the
+// Accounts dialog. The callback remains on Microsoft's native-client URI so a
+// remote/Docker operator can copy it from the browser address bar.
+func (h *AccountHandler) StartM365OAuthCompat(c *gin.Context) {
+	if h == nil || h.m365OAuthService == nil {
+		response.InternalError(c, "M365 OAuth is not configured")
+		return
+	}
+	result, err := h.m365OAuthService.Start(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
+// CompleteM365OAuthCompat validates the exact callback origin/state, exchanges
+// the code server-side, and upserts the M365 provider account by oid+tid then
+// email. Existing account metadata and refresh tokens are preserved.
+func (h *AccountHandler) CompleteM365OAuthCompat(c *gin.Context) {
+	if h == nil || h.m365OAuthService == nil || h.adminService == nil {
+		response.InternalError(c, "M365 OAuth is not configured")
+		return
+	}
+	var req m365OAuthCompatRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "invalid M365 OAuth request")
+		return
+	}
+	tokenInfo, err := h.m365OAuthService.Complete(c.Request.Context(), strings.TrimSpace(req.LoginID), strings.TrimSpace(req.CallbackURL))
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	credentials := map[string]any{
+		"access_token": tokenInfo.AccessToken,
+		"oid":          tokenInfo.OID,
+		"tid":          tokenInfo.TID,
+		"client_id":    m365.ClientID,
+		"scope":        m365.Scope,
+		"auth_method":  "pkce",
+		"expires_at":   time.Unix(tokenInfo.ExpiresAt, 0).UTC().Format(time.RFC3339),
+	}
+	if tokenInfo.IDToken != "" {
+		credentials["id_token"] = tokenInfo.IDToken
+	}
+	if tokenInfo.RefreshToken != "" {
+		credentials["refresh_token"] = tokenInfo.RefreshToken
+	}
+	userID := tokenInfo.OID + "@" + tokenInfo.TID
+	accounts, err := h.adminService.ListAccountsForSchedulerScoreFilter(c.Request.Context(), service.PlatformM365, "", "", "", 0, "")
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	var existing *service.Account
+	for index := range accounts {
+		candidate := &accounts[index]
+		candidateUserID := strings.TrimSpace(candidate.GetCredential("oid")) + "@" + strings.TrimSpace(candidate.GetCredential("tid"))
+		if tokenInfo.OID != "" && tokenInfo.TID != "" && strings.EqualFold(userID, candidateUserID) {
+			existing = candidate
+			break
+		}
+		if existing == nil && tokenInfo.Email != "" && strings.EqualFold(strings.TrimSpace(tokenInfo.Email), strings.TrimSpace(candidate.GetCredential("email"))) {
+			existing = candidate
+			break
+		}
+	}
+	if credentialMapString(credentials, "refresh_token") == "" && existing != nil {
+		if oldRefresh := strings.TrimSpace(existing.GetCredential("refresh_token")); oldRefresh != "" {
+			credentials["refresh_token"] = oldRefresh
+		}
+	}
+	if credentialMapString(credentials, "refresh_token") == "" {
+		response.BadRequest(c, "Microsoft did not return a refresh token; restart login and approve offline access")
+		return
+	}
+	var account *service.Account
+	created := false
+	if existing != nil {
+		account, err = h.adminService.UpdateAccount(c.Request.Context(), existing.ID, &service.UpdateAccountInput{Type: service.AccountTypeOAuth, Credentials: credentials})
+	} else {
+		name := strings.TrimSpace(tokenInfo.Email)
+		if name == "" {
+			name = userID
+		}
+		account, err = h.adminService.CreateAccount(c.Request.Context(), &service.CreateAccountInput{
+			Name: name, Platform: service.PlatformM365, Type: service.AccountTypeOAuth,
+			Credentials: credentials, Extra: map[string]any{"source_provider": service.PlatformM365},
+		})
+		created = true
+	}
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	h.m365OAuthService.Consume(req.LoginID)
+	response.Success(c, gin.H{"status": "complete", "created": created, "account": neonixAccountView(account)})
+}
+
+func (h *AccountHandler) CancelM365OAuthCompat(c *gin.Context) {
+	if h != nil && h.m365OAuthService != nil {
+		var req struct {
+			LoginID string `json:"loginId"`
+		}
+		if c.ShouldBindJSON(&req) == nil {
+			h.m365OAuthService.Cancel(req.LoginID)
+		}
+	}
+	response.Success(c, gin.H{"ok": true, "cancelled": true})
+}
+
+type mailboxPollCompatRequest struct {
+	AccountID     string `json:"accountId" binding:"required"`
+	TimeoutMs     int    `json:"timeoutMs"`
+	SenderFilter  string `json:"senderFilter"`
+	SubjectFilter string `json:"subjectFilter"`
+}
+
+// ListMailboxAccountsCompat returns only Outlook/M365 accounts that have a
+// configured mailbox refresh token. Credential values never leave the handler.
+func (h *AccountHandler) ListMailboxAccountsCompat(c *gin.Context) {
+	if h == nil || h.adminService == nil {
+		response.InternalError(c, "Mailbox is not configured")
+		return
+	}
+	all := make([]service.Account, 0)
+	seen := make(map[int64]struct{})
+	for _, platform := range []string{service.PlatformOutlook, service.PlatformM365} {
+		accounts, err := h.adminService.ListAccountsForSchedulerScoreFilter(c.Request.Context(), platform, "", "", "", 0, "")
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		for _, account := range accounts {
+			if account.Platform != service.PlatformOutlook && account.Platform != service.PlatformM365 {
+				continue
+			}
+			if _, ok := seen[account.ID]; ok {
+				continue
+			}
+			seen[account.ID] = struct{}{}
+			all = append(all, account)
+		}
+	}
+	items := make([]gin.H, 0, len(all))
+	for _, account := range all {
+		credentials := account.Credentials
+		if !isMailboxConfigured(account.Platform, credentials) {
+			continue
+		}
+		email := strings.TrimSpace(account.GetCredential("email"))
+		if email == "" {
+			email = strings.TrimSpace(account.Name)
+		}
+		if email == "" {
+			continue
+		}
+		lastUsedAt := int64(0)
+		if account.LastUsedAt != nil {
+			lastUsedAt = account.LastUsedAt.UnixMilli()
+		}
+		createdAt := account.CreatedAt.UnixMilli()
+		if createdAt <= 0 {
+			createdAt = time.Now().UnixMilli()
+		}
+		items = append(items, gin.H{
+			"id": strconv.FormatInt(account.ID, 10), "email": email, "provider": account.Platform,
+			"status": account.Status, "hasRefreshToken": true, "createdAt": createdAt,
+			"lastUsedAt": func() any {
+				if lastUsedAt > 0 {
+					return lastUsedAt
+				}
+				return nil
+			}(),
+		})
+	}
+	mailboxSuccess(c, gin.H{"accounts": items})
+}
+
+// PollMailboxCompat calls the supported Python worker route. At most one
+// request per mailbox account is active at a time, and worker errors remain
+// distinguishable from a legitimate empty inbox.
+func (h *AccountHandler) PollMailboxCompat(c *gin.Context) {
+	if h == nil || h.adminService == nil || h.mailboxRuntime == nil {
+		mailboxRespondError(c, "MAILBOX_RUNTIME_UNAVAILABLE")
+		return
+	}
+	var req mailboxPollCompatRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		mailboxRespondError(c, "MAILBOX_ACCOUNT_REQUIRED")
+		return
+	}
+	accountID, err := strconv.ParseInt(strings.TrimSpace(req.AccountID), 10, 64)
+	if err != nil || accountID <= 0 {
+		mailboxRespondError(c, "MAILBOX_ACCOUNT_REQUIRED")
+		return
+	}
+	timeout, err := service.ParseMailboxTimeout(req.TimeoutMs)
+	if err != nil {
+		mailboxRespondError(c, "MAILBOX_TIMEOUT_INVALID")
+		return
+	}
+	if !h.claimMailboxPoll(accountID) {
+		mailboxRespondError(c, "MAILBOX_POLL_IN_PROGRESS")
+		return
+	}
+	defer h.releaseMailboxPoll(accountID)
+	account, err := h.adminService.GetAccount(c.Request.Context(), accountID)
+	if err != nil {
+		if errors.Is(err, service.ErrAccountNotFound) {
+			mailboxRespondError(c, "MAILBOX_ACCOUNT_NOT_FOUND")
+			return
+		}
+		response.ErrorFrom(c, err)
+		return
+	}
+	if account == nil || (account.Platform != service.PlatformOutlook && account.Platform != service.PlatformM365) {
+		mailboxRespondError(c, "MAILBOX_ACCOUNT_NOT_FOUND")
+		return
+	}
+	email := strings.TrimSpace(account.GetCredential("email"))
+	if email == "" {
+		email = strings.TrimSpace(account.Name)
+	}
+	refreshToken := mailboxRefreshTokenForAccount(account.Credentials)
+	clientID := mailboxClientIDForAccount(account.Platform, account.Credentials)
+	if email == "" || refreshToken == "" || clientID == "" || !isMailboxConfigured(account.Platform, account.Credentials) {
+		mailboxRespondError(c, "MAILBOX_CREDENTIAL_INVALID")
+		return
+	}
+	result, err := h.mailboxRuntime.Poll(c.Request.Context(), service.MailboxPollInput{
+		Email: email, ClientID: clientID, RefreshToken: refreshToken, Timeout: timeout,
+		SenderFilter: req.SenderFilter, SubjectFilter: req.SubjectFilter,
+	})
+	if err != nil {
+		mailboxRespondError(c, service.MailboxErrorCode(err))
+		return
+	}
+	if result != nil {
+		result.URL = normalizeMailboxHTTPSURL(result.URL)
+	}
+	mailboxSuccess(c, result)
+}
+
+func (h *AccountHandler) claimMailboxPoll(accountID int64) bool {
+	h.mailboxPollMu.Lock()
+	defer h.mailboxPollMu.Unlock()
+	if h.mailboxPolls == nil {
+		h.mailboxPolls = make(map[int64]struct{})
+	}
+	if _, exists := h.mailboxPolls[accountID]; exists {
+		return false
+	}
+	h.mailboxPolls[accountID] = struct{}{}
+	return true
+}
+
+func (h *AccountHandler) releaseMailboxPoll(accountID int64) {
+	h.mailboxPollMu.Lock()
+	delete(h.mailboxPolls, accountID)
+	h.mailboxPollMu.Unlock()
+}
+
+func mailboxRefreshTokenForAccount(credentials map[string]any) string {
+	for _, key := range []string{"mailbox_refresh_token", "mailboxRefreshToken", "refresh_token", "refreshToken"} {
+		if value, ok := credentials[key].(string); ok && strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+
+func mailboxClientIDForAccount(platform string, credentials map[string]any) string {
+	for _, key := range []string{"client_id", "clientId"} {
+		if value, ok := credentials[key].(string); ok && strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	if platform == service.PlatformM365 {
+		return m365.ClientID
+	}
+	return m365.MailboxClientID
+}
+
+func isMailboxConfigured(platform string, credentials map[string]any) bool {
+	if mailboxRefreshTokenForAccount(credentials) == "" {
+		return false
+	}
+	if platform == service.PlatformOutlook {
+		return true
+	}
+	// An M365 provider account may be reused only when it was explicitly
+	// authorized for IMAP; the normal Copilot scope is not sufficient for mail.
+	scopeValue, _ := credentials["scope"].(string)
+	mailboxEnabled, _ := credentials["mailbox"].(bool)
+	scope := strings.ToLower(strings.TrimSpace(scopeValue))
+	return strings.Contains(scope, "imap.accessasuser.all") || mailboxEnabled
+}
+
+func normalizeMailboxHTTPSURL(raw string) string {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.Fragment != "" {
+		return ""
+	}
+	return parsed.String()
+}
+
+func mailboxRespondError(c *gin.Context, code string) {
+	status := http.StatusBadGateway
+	message := "Mailbox polling failed"
+	switch code {
+	case "MAILBOX_ACCOUNT_REQUIRED", "MAILBOX_TIMEOUT_INVALID", "MAILBOX_CREDENTIAL_INVALID":
+		status, message = http.StatusBadRequest, "Mailbox request is invalid"
+	case "MAILBOX_ACCOUNT_NOT_FOUND":
+		status, message = http.StatusNotFound, "Mailbox account was not found"
+	case "MAILBOX_POLL_IN_PROGRESS":
+		status, message = http.StatusConflict, "Mailbox is already being polled"
+	case "MAILBOX_RUNTIME_UNAVAILABLE":
+		status, message = http.StatusServiceUnavailable, "Mailbox runtime is unavailable"
+	}
+	response.ErrorFrom(c, infraerrors.New(status, code, message))
+}
+
+type mailboxOAuthCompatRequest struct {
+	LoginID     string `json:"loginId" binding:"required"`
+	CallbackURL string `json:"callbackUrl" binding:"required"`
+}
+
+func (h *AccountHandler) StartMailboxOAuthCompat(c *gin.Context) {
+	if h == nil || h.mailboxOAuthService == nil {
+		mailboxRespondError(c, "MAILBOX_OAUTH_UNAVAILABLE")
+		return
+	}
+	result, err := h.mailboxOAuthService.Start(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	mailboxSuccess(c, result)
+}
+
+func (h *AccountHandler) CompleteMailboxOAuthCompat(c *gin.Context) {
+	if h == nil || h.mailboxOAuthService == nil || h.adminService == nil {
+		mailboxRespondError(c, "MAILBOX_OAUTH_UNAVAILABLE")
+		return
+	}
+	var req mailboxOAuthCompatRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		mailboxRespondError(c, "MAILBOX_OAUTH_CALLBACK_REQUIRED")
+		return
+	}
+	tokenInfo, err := h.mailboxOAuthService.Complete(c.Request.Context(), req.LoginID, req.CallbackURL)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	accounts, err := h.adminService.ListAccountsForSchedulerScoreFilter(c.Request.Context(), service.PlatformOutlook, "", "", "", 0, "")
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	userID := tokenInfo.OID + "@" + tokenInfo.TID
+	var existing *service.Account
+	for index := range accounts {
+		candidate := &accounts[index]
+		candidateUserID := strings.TrimSpace(candidate.GetCredential("oid")) + "@" + strings.TrimSpace(candidate.GetCredential("tid"))
+		if strings.EqualFold(userID, candidateUserID) || (tokenInfo.Email != "" && strings.EqualFold(tokenInfo.Email, candidate.GetCredential("email"))) {
+			existing = candidate
+			break
+		}
+	}
+	refreshToken := strings.TrimSpace(tokenInfo.RefreshToken)
+	if refreshToken == "" && existing != nil {
+		refreshToken = mailboxRefreshTokenForAccount(existing.Credentials)
+	}
+	if refreshToken == "" {
+		response.ErrorFrom(c, infraerrors.New(http.StatusBadRequest, "MAILBOX_OAUTH_REFRESH_TOKEN_MISSING", "Microsoft did not return a refresh token; restart login and approve offline access"))
+		return
+	}
+	credentials := map[string]any{
+		"refresh_token": refreshToken, "oid": tokenInfo.OID, "tid": tokenInfo.TID,
+		"client_id": m365.MailboxClientID, "scope": m365.MailboxScope, "auth_method": "pkce",
+		"email": tokenInfo.Email,
+	}
+	var account *service.Account
+	created := false
+	if existing != nil {
+		account, err = h.adminService.UpdateAccount(c.Request.Context(), existing.ID, &service.UpdateAccountInput{Type: service.AccountTypeOAuth, Credentials: credentials})
+	} else {
+		name := strings.TrimSpace(tokenInfo.Email)
+		if name == "" {
+			name = userID
+		}
+		account, err = h.adminService.CreateAccount(c.Request.Context(), &service.CreateAccountInput{
+			Name: name, Platform: service.PlatformOutlook, Type: service.AccountTypeOAuth,
+			Credentials: credentials, Extra: map[string]any{"source_provider": service.PlatformOutlook, "mailbox": true},
+		})
+		created = true
+	}
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	h.mailboxOAuthService.Consume(req.LoginID)
+	mailboxSuccess(c, gin.H{"status": "complete", "created": created, "account": neonixAccountView(account)})
+}
+
+func (h *AccountHandler) CancelMailboxOAuthCompat(c *gin.Context) {
+	if h != nil && h.mailboxOAuthService != nil {
+		var req struct {
+			LoginID string `json:"loginId"`
+		}
+		if c.ShouldBindJSON(&req) == nil {
+			h.mailboxOAuthService.Cancel(req.LoginID)
+		}
+	}
+	mailboxSuccess(c, gin.H{"ok": true, "cancelled": true})
+}
+
+func mailboxSuccess(c *gin.Context, data any) {
+	response.Success(c, gin.H{"success": true, "data": data})
+}
+
+// StartAntigravityOAuthCompat adapts the existing Go OAuth session to the
+// Neonix callback-paste flow. Secrets stay inside the service and are never
+// included in the start response.
+func (h *AccountHandler) StartAntigravityOAuthCompat(c *gin.Context) {
+	if h == nil || h.antigravityOAuthService == nil {
+		response.InternalError(c, "Antigravity OAuth is not configured")
+		return
+	}
+	result, err := h.antigravityOAuthService.GenerateAuthURL(c.Request.Context(), nil)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{
+		"loginId":          result.SessionID,
+		"authorizationUrl": result.AuthURL,
+		"redirectUri":      antigravity.RedirectURI,
+		"expiresAt":        time.Now().Add(antigravity.SessionTTL).UnixMilli(),
+	})
+}
+
+func parseAntigravityCallbackURL(raw string) (code, state string, err error) {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || parsed.Scheme != "http" || parsed.Host != "localhost:8080" || (parsed.Path != "/callback" && parsed.Path != "/login") {
+		return "", "", errors.New("invalid Antigravity callback URL")
+	}
+	if parsed.Fragment != "" {
+		return "", "", errors.New("invalid Antigravity callback URL fragment")
+	}
+	query := parsed.Query()
+	if parsed.Path == "/login" {
+		next := strings.TrimSpace(query.Get("next"))
+		if next == "" || !strings.HasPrefix(next, "/?") {
+			return "", "", errors.New("Antigravity callback is missing next")
+		}
+		if nested, parseErr := url.Parse(next); parseErr == nil {
+			query = nested.Query()
+			for _, key := range []string{"code", "state", "error"} {
+				if query.Get(key) == "" && parsed.Query().Get(key) != "" {
+					query.Set(key, parsed.Query().Get(key))
+				}
+			}
+		} else {
+			return "", "", errors.New("invalid Antigravity callback URL")
+		}
+	}
+	code = strings.TrimSpace(query.Get("code"))
+	state = strings.TrimSpace(query.Get("state"))
+	if code == "" || state == "" {
+		return "", "", errors.New("Antigravity callback is missing code or state")
+	}
+	return code, state, nil
+}
+
+// CompleteAntigravityOAuthCompat exchanges a pasted callback and upserts the
+// resulting credential by email. Existing account metadata and scheduling
+// state are preserved on reconnect; a refresh token is retained when Google
+// omits it on a subsequent consent response.
+func (h *AccountHandler) CompleteAntigravityOAuthCompat(c *gin.Context) {
+	if h == nil || h.antigravityOAuthService == nil || h.adminService == nil {
+		response.InternalError(c, "Antigravity OAuth is not configured")
+		return
+	}
+	var req antigravityOAuthCompatRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "invalid callback request")
+		return
+	}
+	code, state, err := parseAntigravityCallbackURL(req.CallbackURL)
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	tokenInfo, err := h.antigravityOAuthService.ExchangeCode(c.Request.Context(), &service.AntigravityExchangeCodeInput{
+		SessionID: strings.TrimSpace(req.LoginID),
+		State:     state,
+		Code:      code,
+	})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	credentials := h.antigravityOAuthService.BuildAccountCredentials(tokenInfo)
+	accounts, err := h.adminService.ListAccountsForSchedulerScoreFilter(c.Request.Context(), service.PlatformAntigravity, "", "", "", 0, "")
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	var existing *service.Account
+	if email := strings.TrimSpace(tokenInfo.Email); email != "" {
+		for index := range accounts {
+			if strings.EqualFold(strings.TrimSpace(accounts[index].GetCredential("email")), email) {
+				candidate := accounts[index]
+				existing = &candidate
+				break
+			}
+		}
+	}
+	if existing != nil {
+		if strings.TrimSpace(tokenInfo.RefreshToken) == "" {
+			if oldRefresh := existing.GetCredential("refresh_token"); oldRefresh != "" {
+				credentials["refresh_token"] = oldRefresh
+			}
+		}
+		updated, updateErr := h.adminService.UpdateAccount(c.Request.Context(), existing.ID, &service.UpdateAccountInput{
+			Type:        service.AccountTypeOAuth,
+			Credentials: credentials,
+		})
+		if updateErr != nil {
+			response.ErrorFrom(c, updateErr)
+			return
+		}
+		response.Success(c, gin.H{
+			"status":      "complete",
+			"created":     false,
+			"account":     neonixAccountView(updated),
+			"warning":     antigravityOAuthWarning(tokenInfo),
+			"warningCode": antigravityOAuthWarningCode(tokenInfo),
+		})
+		return
+	}
+
+	name := strings.TrimSpace(tokenInfo.Email)
+	if name == "" {
+		name = "Antigravity account"
+	}
+	created, err := h.adminService.CreateAccount(c.Request.Context(), &service.CreateAccountInput{
+		Name:        name,
+		Platform:    service.PlatformAntigravity,
+		Type:        service.AccountTypeOAuth,
+		Credentials: credentials,
+		Extra:       map[string]any{"source_provider": "antigravity"},
+	})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	h.adminService.ForceAntigravityPrivacy(c.Request.Context(), created)
+	response.Success(c, gin.H{
+		"status":      "complete",
+		"created":     true,
+		"account":     neonixAccountView(created),
+		"warning":     antigravityOAuthWarning(tokenInfo),
+		"warningCode": antigravityOAuthWarningCode(tokenInfo),
+	})
+}
+
+func antigravityOAuthWarning(tokenInfo *service.AntigravityTokenInfo) string {
+	if tokenInfo != nil && tokenInfo.ProjectIDMissing {
+		return "Antigravity login succeeded, but project metadata is not available yet"
+	}
+	return ""
+}
+
+func antigravityOAuthWarningCode(tokenInfo *service.AntigravityTokenInfo) string {
+	if tokenInfo != nil && tokenInfo.ProjectIDMissing {
+		return "OAUTH_METADATA_UNAVAILABLE"
+	}
+	return ""
+}
+
+func (h *AccountHandler) CancelAntigravityOAuthCompat(c *gin.Context) {
+	if h != nil && h.antigravityOAuthService != nil {
+		var req struct {
+			LoginID string `json:"loginId"`
+		}
+		if c.ShouldBindJSON(&req) == nil {
+			h.antigravityOAuthService.Cancel(req.LoginID)
+		}
+	}
+	response.Success(c, gin.H{"ok": true, "cancelled": true})
 }
 
 func buildAccountsListETag[T any](
@@ -2775,6 +3989,31 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 	account, err := h.adminService.GetAccount(c.Request.Context(), accountID)
 	if err != nil {
 		response.NotFound(c, "Account not found")
+		return
+	}
+
+	if account.Platform == service.PlatformKiro || account.Platform == service.PlatformQoder || account.Platform == service.PlatformCodeBuddy || account.Platform == service.PlatformWorkBuddy || account.Platform == service.PlatformCodeBuddyChina {
+		if h.accountTestService != nil {
+			if models, fetchErr := h.accountTestService.FetchUpstreamSupportedModels(c.Request.Context(), account); fetchErr == nil && len(models) > 0 {
+				items := make([]openai.Model, 0, len(models))
+				for _, modelID := range models {
+					items = append(items, openai.Model{ID: modelID, Object: "model", Type: "model", OwnedBy: account.Platform, DisplayName: modelID})
+				}
+				response.Success(c, items)
+				return
+			}
+		}
+		mapping := account.GetModelMapping()
+		models := make([]string, 0, len(mapping))
+		for modelID := range mapping {
+			models = append(models, modelID)
+		}
+		sort.Strings(models)
+		items := make([]openai.Model, 0, len(models))
+		for _, modelID := range models {
+			items = append(items, openai.Model{ID: modelID, Object: "model", Type: "model", OwnedBy: account.Platform, DisplayName: modelID})
+		}
+		response.Success(c, items)
 		return
 	}
 

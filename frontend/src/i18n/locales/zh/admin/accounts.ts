@@ -311,6 +311,10 @@ export default {
         zhipu: 'Zhipu GLM',
         deepseek: 'DeepSeek',
         minimax: 'MiniMax',
+        kiro: 'Kiro',
+        qoder: 'Qoder',
+        codebuddy: 'CodeBuddy',
+        'codebuddy-china': 'CodeBuddy 中国版',
       },
       cnProviders: {
         accountMode: {

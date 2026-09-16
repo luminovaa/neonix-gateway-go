@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/luminovaa/neonix-gateway-go/internal/config"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/logger"
 )
 
 var (
@@ -306,10 +306,9 @@ func (s *SchedulerSnapshotService) GetGroupByID(ctx context.Context, groupID int
 	return s.groupRepo.GetByID(ctx, groupID)
 }
 
-// GetGroupByIDLite 获取分组配置但不加载账号计数聚合。
-// 利润门只需要平台、倍率、利润与高峰字段，GetByID 附带的那条账号计数聚合
-// 查询纯属浪费——composite / 模型路由 / fallback 每次装门都要付一次，WS 更是
-// 每个 turn 一次，且发生在「是否启用利润控制」判定之前。
+// GetGroupByIDLite 获取调度需要的分组配置，但不加载账号计数聚合。
+// 调度热路径只读取分组配置；GetByID 附带的账号计数查询在 composite、模型
+// 路由和 fallback 中没有用途。
 func (s *SchedulerSnapshotService) GetGroupByIDLite(ctx context.Context, groupID int64) (*Group, error) {
 	if s.groupRepo == nil {
 		return nil, nil
@@ -609,7 +608,8 @@ func (s *SchedulerSnapshotService) handleBulkAccountEvent(ctx context.Context, p
 		}
 		accountGroupIDs := s.normalizeGroupIDs(account.GroupIDs)
 		switch account.Platform {
-		case PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax:
+		case PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax,
+			PlatformKiro, PlatformQoder, PlatformCodeBuddy, PlatformWorkBuddy, PlatformCodeBuddyChina:
 			addPlatformGroups(account.Platform, accountGroupIDs)
 		case PlatformAntigravity:
 			// 批量更新可能刚关闭 mixed_scheduling，仍需清理两个兼容平台的旧快照。
@@ -824,8 +824,8 @@ func (s *SchedulerSnapshotService) rebuildByAccount(ctx context.Context, account
 	return s.rebuildBuckets(ctx, buckets, reason)
 }
 
-func schedulerSnapshotPlatforms() [9]string {
-	return [9]string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax}
+func schedulerSnapshotPlatforms() []string {
+	return ConcreteGatewayPlatforms()
 }
 
 // 生命周期辅助函数有意排除 group0；full rebuild 构造 group0 canonical 集时必须显式调用 canonical helper。

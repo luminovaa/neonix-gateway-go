@@ -9,12 +9,12 @@ import (
 	"strconv"
 	"strings"
 
-	dbent "github.com/Wei-Shaw/sub2api/ent"
-	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
-	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
-	"github.com/Wei-Shaw/sub2api/internal/payment"
-	"github.com/Wei-Shaw/sub2api/internal/payment/provider"
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	dbent "github.com/luminovaa/neonix-gateway-go/ent"
+	"github.com/luminovaa/neonix-gateway-go/ent/paymentorder"
+	"github.com/luminovaa/neonix-gateway-go/ent/paymentproviderinstance"
+	"github.com/luminovaa/neonix-gateway-go/internal/payment"
+	"github.com/luminovaa/neonix-gateway-go/internal/payment/provider"
+	infraerrors "github.com/luminovaa/neonix-gateway-go/internal/pkg/errors"
 )
 
 // validateProviderConfig runs the provider's constructor to surface config-level

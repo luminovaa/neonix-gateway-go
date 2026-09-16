@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/ctxkey"
 )
 
 // WithResolvedTargetPlatform stores the concrete provider chosen for a request
@@ -114,6 +114,14 @@ func DetectModelPlatform(model string) (string, bool) {
 			return PlatformDeepseek, true
 		case "minimax":
 			return PlatformMiniMax, true
+		case "kiro", "ko":
+			return PlatformKiro, true
+		case "qoder", "qr":
+			return PlatformQoder, true
+		case "codebuddy", "cb":
+			return PlatformCodeBuddy, true
+		case "codebuddy-china", "cbc":
+			return PlatformCodeBuddyChina, true
 		}
 		if rest != "" {
 			normalized = strings.TrimPrefix(rest, "models/")
@@ -200,11 +208,10 @@ func (s *GatewayService) resolveCompositeRouteDecision(ctx context.Context, grou
 }
 
 func isConcreteRequestPlatform(platform string) bool {
-	switch platform {
-	case PlatformAnthropic, PlatformOpenAI, PlatformGemini, PlatformAntigravity, PlatformGrok,
-		PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax:
-		return true
-	default:
-		return false
+	for _, candidate := range concreteGatewayPlatforms {
+		if platform == candidate {
+			return true
+		}
 	}
+	return false
 }

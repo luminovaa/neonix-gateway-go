@@ -19,11 +19,11 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
-	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/cespare/xxhash/v2"
+	"github.com/luminovaa/neonix-gateway-go/internal/config"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/logger"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/xai"
+	"github.com/luminovaa/neonix-gateway-go/internal/util/responseheaders"
 	gocache "github.com/patrickmn/go-cache"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
@@ -580,15 +580,6 @@ type AccountSelectionResult struct {
 	Acquired    bool
 	ReleaseFunc func()
 	WaitPlan    *AccountWaitPlan // nil means no wait allowed
-	// profitGate 携带本次选号真实生效的利润门（无门为 nil）。门安装在调度栈的
-	// 局部 ctx 上，handler 必须经 ContextWithSelectionProfitGate 重放后才能在
-	// 调度栈之外做抢槽后终检与准入后粘性绑定。
-	profitGate *openAIProfitControlGate
-}
-
-// ProfitGateActive 报告本次选号是否处于利润门之下。
-func (r *AccountSelectionResult) ProfitGateActive() bool {
-	return r != nil && r.profitGate != nil
 }
 
 // ClaudeUsage 表示Claude API返回的usage信息
@@ -664,6 +655,7 @@ type GatewayFailureScope string
 
 const (
 	GatewayFailureScopeAccount  GatewayFailureScope = "account"
+	GatewayFailureScopeModel    GatewayFailureScope = "model"
 	GatewayFailureScopeProvider GatewayFailureScope = "provider"
 	GatewayFailureScopeRequest  GatewayFailureScope = "request"
 )
@@ -698,8 +690,11 @@ type UpstreamFailoverError struct {
 	Scope                    GatewayFailureScope
 	Reason                   GatewayFailureReason
 	NextAccountAction        NextAccountAction
-	ClientStatusCode         int
-	ClientMessage            string
+	// ModelCooldown marks a provider-confirmed model-only cooldown.  It must
+	// never be widened into an account-wide temporary unschedule by handlers.
+	ModelCooldown    bool
+	ClientStatusCode int
+	ClientMessage    string
 }
 
 func (e *UpstreamFailoverError) Error() string {
@@ -755,6 +750,21 @@ func (s *GatewayService) TempUnscheduleRetryableError(ctx context.Context, accou
 		tempUnscheduleGoogleConfigError(ctx, s.accountRepo, accountID, "[handler]")
 	case http.StatusBadGateway:
 		tempUnscheduleEmptyResponse(ctx, s.accountRepo, accountID, "[handler]")
+	}
+}
+
+// TempUnscheduleProviderCooldown records a bounded provider cooldown discovered
+// by an adapter before the next account is selected. It keeps operational quota
+// state out of the generic scheduler while preventing a depleted account from
+// being selected again immediately.
+func (s *GatewayService) TempUnscheduleProviderCooldown(ctx context.Context, accountID int64, until time.Time, reason string) {
+	if s == nil || s.accountRepo == nil || accountID <= 0 || !until.After(time.Now()) {
+		return
+	}
+	stateCtx, cancel := openAIAccountStateContext(ctx)
+	defer cancel()
+	if err := s.accountRepo.SetTempUnschedulable(stateCtx, accountID, until, reason); err != nil {
+		slog.Warn("provider_cooldown_set_failed", "account_id", accountID, "until", until, "reason", reason, "error", err)
 	}
 }
 
@@ -960,39 +970,8 @@ func (s *GatewayService) BindStickySession(ctx context.Context, groupID *int64, 
 	return s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, accountID, stickySessionTTL)
 }
 
-// bindGatewayStickySessionDuringSelection preserves the normal eager sticky
-// behavior unless a profit gate is installed. Profit-controlled requests bind
-// only after the terminal post-slot check, otherwise a rejected candidate could
-// overwrite a healthy pre-existing sticky binding.
+// bindGatewayStickySessionDuringSelection records the selected account using the normal sticky TTL.
 func (s *GatewayService) bindGatewayStickySessionDuringSelection(ctx context.Context, groupID *int64, sessionHash string, accountID int64) error {
-	if gatewayProfitControlGateActive(ctx) {
-		return nil
-	}
-	return s.BindStickySession(ctx, groupID, sessionHash, accountID)
-}
-
-// BindStickySessionAfterProfitAdmission records a terminally admitted
-// account. Without a profit gate it preserves the pre-existing eager binding
-// behavior at the handler bind points. With a gate it never replaces a
-// different binding that already exists: a temporarily ineligible sticky
-// account remains bound and automatically becomes eligible again if its
-// account rate recovers.
-func (s *GatewayService) BindStickySessionAfterProfitAdmission(ctx context.Context, groupID *int64, sessionHash string, accountID int64) error {
-	if sessionHash == "" || accountID <= 0 || s.cache == nil {
-		return nil
-	}
-	if !gatewayProfitControlGateActive(ctx) {
-		return s.BindStickySession(ctx, groupID, sessionHash, accountID)
-	}
-	existingAccountID, err := s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
-	if err != nil && !errors.Is(err, ErrStickySessionNotFound) {
-		// 读失败时无法判断既有绑定，保守跳过而不是冒着覆盖健康绑定的风险写入。
-		slog.Warn("profit_control_sticky_binding_read_failed", "group_id", derefGroupID(groupID), "account_id", accountID, "error", err)
-		return nil
-	}
-	if existingAccountID > 0 && existingAccountID != accountID {
-		return nil
-	}
 	return s.BindStickySession(ctx, groupID, sessionHash, accountID)
 }
 

@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/luminovaa/neonix-gateway-go/internal/pkg/pagination"
 )
 
 const (

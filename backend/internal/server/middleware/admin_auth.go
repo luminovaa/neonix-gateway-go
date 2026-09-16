@@ -6,7 +6,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/luminovaa/neonix-gateway-go/internal/service"
 
 	"github.com/gin-gonic/gin"
 )
@@ -24,7 +24,7 @@ func NewAdminAuthMiddleware(
 // adminAuth 管理员认证中间件实现
 // 支持两种认证方式（通过不同的 header 区分）：
 // 1. Admin API Key: x-api-key: <admin-api-key>
-// 2. JWT Token: Authorization: Bearer <jwt-token> (需要管理员角色)
+// 2. JWT Token: Authorization: Bearer <jwt-token> (active local operator)
 func adminAuth(
 	authService *service.AuthService,
 	userService *service.UserService,
@@ -147,7 +147,7 @@ func validateAdminAPIKey(
 		UserID:      admin.ID,
 		Concurrency: admin.Concurrency,
 	})
-	c.Set(string(ContextKeyUserRole), admin.Role)
+	c.Set(string(ContextKeyUserRole), service.RoleAdmin)
 	c.Set(ContextKeyAuthEmail, admin.Email)
 	c.Set("auth_method", "admin_api_key")
 	return true
@@ -197,17 +197,11 @@ func validateJWTForAdmin(
 		return false
 	}
 
-	// 检查管理员权限
-	if !user.IsAdmin() {
-		AbortWithError(c, 403, "FORBIDDEN", "Admin access required")
-		return false
-	}
-
 	c.Set(string(ContextKeyUser), AuthSubject{
 		UserID:      user.ID,
 		Concurrency: user.Concurrency,
 	})
-	c.Set(string(ContextKeyUserRole), user.Role)
+	c.Set(string(ContextKeyUserRole), service.RoleAdmin)
 	c.Set(ContextKeyAuthEmail, user.Email)
 	c.Set(ContextKeySessionID, claims.SessionID)
 	c.Set("auth_method", "jwt")
